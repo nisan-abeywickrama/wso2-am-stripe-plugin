@@ -29,12 +29,14 @@ import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.poi.POIDocument;
 import org.json.simple.JSONObject;
 import org.wso2.apim.monetization.impl.StripeMonetizationConstants;
 import org.wso2.apim.monetization.impl.StripeMonetizationDAO;
 import org.wso2.apim.monetization.impl.StripeMonetizationException;
 import org.wso2.apim.monetization.impl.model.MonetizationPlatformCustomer;
 import org.wso2.apim.monetization.impl.model.MonetizationSharedCustomer;
+import org.wso2.apim.monetization.impl.util.ProxyUtil;
 import org.wso2.carbon.apimgt.api.APIManagementException;
 import org.wso2.carbon.apimgt.api.WorkflowResponse;
 import org.wso2.carbon.apimgt.api.model.API;
@@ -137,7 +139,8 @@ public class StripeSubscriptionCreationWorkflowExecutor extends WorkflowExecutor
         configMap.put(APIConstants.ALLOW_MULTIPLE_STATUS,
                 Boolean.toString(APIUtil.isAllowDisplayAPIsWithMultipleStatus()));
         apiPersistenceInstance = PersistenceManager.getPersistenceInstance(configMap, properties);
-
+        //set proxy connection
+        ProxyUtil.setProxy();
         //read the platform account key of Stripe
         Stripe.apiKey = getPlatformAccountKey(subWorkFlowDTO.getTenantId());
         String connectedAccountKey;
@@ -227,7 +230,8 @@ public class StripeSubscriptionCreationWorkflowExecutor extends WorkflowExecutor
         configMap.put(APIConstants.ALLOW_MULTIPLE_STATUS,
                 Boolean.toString(APIUtil.isAllowDisplayAPIsWithMultipleStatus()));
         apiPersistenceInstance = PersistenceManager.getPersistenceInstance(configMap, properties);
-
+        //set proxy connections
+        ProxyUtil.setProxy();
         //read the platform account key of Stripe
         Stripe.apiKey = getPlatformAccountKey(subWorkFlowDTO.getTenantId());
         String connectedAccountKey;
@@ -342,6 +346,7 @@ public class StripeSubscriptionCreationWorkflowExecutor extends WorkflowExecutor
 
         Customer stripeCustomer;
         MonetizationSharedCustomer monetizationSharedCustomer = new MonetizationSharedCustomer();
+        ProxyUtil.setProxy();
         Token token;
         try {
             Map<String, Object> params = new HashMap<String, Object>();
@@ -410,6 +415,7 @@ public class StripeSubscriptionCreationWorkflowExecutor extends WorkflowExecutor
             RequestOptions requestOptions, SubscriptionWorkflowDTO subWorkFlowDTO, String apiUuid)
             throws WorkflowException {
 
+        ProxyUtil.setProxy();
         StripeMonetizationDAO stripeMonetizationDAO = StripeMonetizationDAO.getInstance();
         APIIdentifier identifier = new APIIdentifier(subWorkFlowDTO.getApiProvider(), subWorkFlowDTO.getApiName(),
                 subWorkFlowDTO.getApiVersion());
@@ -466,6 +472,7 @@ public class StripeSubscriptionCreationWorkflowExecutor extends WorkflowExecutor
     public MonetizationPlatformCustomer createMonetizationPlatformCutomer(Subscriber subscriber)
             throws WorkflowException {
 
+        ProxyUtil.setProxy();
         MonetizationPlatformCustomer monetizationPlatformCustomer = new MonetizationPlatformCustomer();
         Customer customer = null;
         try {

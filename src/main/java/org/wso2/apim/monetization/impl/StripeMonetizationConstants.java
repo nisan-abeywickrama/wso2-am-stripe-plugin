@@ -163,4 +163,5 @@ public class StripeMonetizationConstants {
     public static final String APPLICATION_ID_COLUMN = "applicationId";
     public static final String ELK_APPLICATION_ID_COLUMN = "applicationId.keyword";
 
+    public static final String MONETIZATION_PROXY_ENABLE_CONFIG = "Monetization.ProxyEnabled";
 }
