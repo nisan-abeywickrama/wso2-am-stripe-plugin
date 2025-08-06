@@ -35,6 +35,7 @@ import org.wso2.apim.monetization.impl.StripeMonetizationDAO;
 import org.wso2.apim.monetization.impl.StripeMonetizationException;
 import org.wso2.apim.monetization.impl.model.MonetizationPlatformCustomer;
 import org.wso2.apim.monetization.impl.model.MonetizationSharedCustomer;
+import org.wso2.apim.monetization.impl.util.MonetizationUtil;
 import org.wso2.carbon.apimgt.api.APIManagementException;
 import org.wso2.carbon.apimgt.api.WorkflowResponse;
 import org.wso2.carbon.apimgt.api.model.API;
@@ -137,7 +138,8 @@ public class StripeSubscriptionCreationWorkflowExecutor extends WorkflowExecutor
         configMap.put(APIConstants.ALLOW_MULTIPLE_STATUS,
                 Boolean.toString(APIUtil.isAllowDisplayAPIsWithMultipleStatus()));
         apiPersistenceInstance = PersistenceManager.getPersistenceInstance(configMap, properties);
-
+        //set proxy connection
+        MonetizationUtil.setProxy();
         //read the platform account key of Stripe
         Stripe.apiKey = getPlatformAccountKey(subWorkFlowDTO.getTenantId());
         String connectedAccountKey;
@@ -227,7 +229,8 @@ public class StripeSubscriptionCreationWorkflowExecutor extends WorkflowExecutor
         configMap.put(APIConstants.ALLOW_MULTIPLE_STATUS,
                 Boolean.toString(APIUtil.isAllowDisplayAPIsWithMultipleStatus()));
         apiPersistenceInstance = PersistenceManager.getPersistenceInstance(configMap, properties);
-
+        //set proxy connections
+        MonetizationUtil.setProxy();
         //read the platform account key of Stripe
         Stripe.apiKey = getPlatformAccountKey(subWorkFlowDTO.getTenantId());
         String connectedAccountKey;
@@ -342,6 +345,7 @@ public class StripeSubscriptionCreationWorkflowExecutor extends WorkflowExecutor
 
         Customer stripeCustomer;
         MonetizationSharedCustomer monetizationSharedCustomer = new MonetizationSharedCustomer();
+        MonetizationUtil.setProxy();
         Token token;
         try {
             Map<String, Object> params = new HashMap<String, Object>();
@@ -410,6 +414,7 @@ public class StripeSubscriptionCreationWorkflowExecutor extends WorkflowExecutor
             RequestOptions requestOptions, SubscriptionWorkflowDTO subWorkFlowDTO, String apiUuid)
             throws WorkflowException {
 
+        MonetizationUtil.setProxy();
         StripeMonetizationDAO stripeMonetizationDAO = StripeMonetizationDAO.getInstance();
         APIIdentifier identifier = new APIIdentifier(subWorkFlowDTO.getApiProvider(), subWorkFlowDTO.getApiName(),
                 subWorkFlowDTO.getApiVersion());
@@ -466,6 +471,7 @@ public class StripeSubscriptionCreationWorkflowExecutor extends WorkflowExecutor
     public MonetizationPlatformCustomer createMonetizationPlatformCutomer(Subscriber subscriber)
             throws WorkflowException {
 
+        MonetizationUtil.setProxy();
         MonetizationPlatformCustomer monetizationPlatformCustomer = new MonetizationPlatformCustomer();
         Customer customer = null;
         try {

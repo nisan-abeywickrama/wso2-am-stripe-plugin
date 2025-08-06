@@ -26,11 +26,11 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
 import org.wso2.apim.monetization.impl.StripeMonetizationConstants;
 import org.wso2.apim.monetization.impl.StripeMonetizationDAO;
 import org.wso2.apim.monetization.impl.StripeMonetizationException;
 import org.wso2.apim.monetization.impl.model.MonetizedSubscription;
+import org.wso2.apim.monetization.impl.util.MonetizationUtil;
 import org.wso2.carbon.apimgt.api.APIManagementException;
 import org.wso2.carbon.apimgt.api.WorkflowResponse;
 import org.wso2.carbon.apimgt.api.model.API;
@@ -41,7 +41,6 @@ import org.wso2.carbon.apimgt.impl.APIManagerConfiguration;
 import org.wso2.carbon.apimgt.impl.dao.ApiMgtDAO;
 import org.wso2.carbon.apimgt.impl.dto.SubscriptionWorkflowDTO;
 import org.wso2.carbon.apimgt.impl.dto.WorkflowDTO;
-import org.wso2.carbon.apimgt.impl.internal.ServiceReferenceHolder;
 import org.wso2.carbon.apimgt.impl.utils.APIUtil;
 import org.wso2.carbon.apimgt.impl.workflow.GeneralWorkflowResponse;
 import org.wso2.carbon.apimgt.impl.workflow.WorkflowConstants;
@@ -53,11 +52,7 @@ import org.wso2.carbon.apimgt.persistence.PersistenceManager;
 import org.wso2.carbon.apimgt.persistence.dto.Organization;
 import org.wso2.carbon.apimgt.persistence.dto.PublisherAPI;
 import org.wso2.carbon.apimgt.persistence.exceptions.APIPersistenceException;
-import org.wso2.carbon.registry.core.Registry;
-import org.wso2.carbon.registry.core.Resource;
-import org.wso2.carbon.registry.core.exceptions.RegistryException;
 
-import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -111,6 +106,7 @@ public class StripeSubscriptionDeletionWorkflowExecutor extends WorkflowExecutor
         SubscriptionWorkflowDTO subWorkflowDTO;
         MonetizedSubscription monetizedSubscription;
         StripeMonetizationDAO stripeMonetizationDAO = new StripeMonetizationDAO();
+        MonetizationUtil.setProxy();
         subWorkflowDTO = (SubscriptionWorkflowDTO) workflowDTO;
         Properties properties = new Properties();
         properties.put(APIConstants.ALLOW_MULTIPLE_STATUS, APIUtil.isAllowDisplayAPIsWithMultipleStatus());
@@ -201,6 +197,7 @@ public class StripeSubscriptionDeletionWorkflowExecutor extends WorkflowExecutor
         SubscriptionWorkflowDTO subWorkflowDTO;
         MonetizedSubscription monetizedSubscription;
         StripeMonetizationDAO stripeMonetizationDAO = new StripeMonetizationDAO();
+        MonetizationUtil.setProxy();
         subWorkflowDTO = (SubscriptionWorkflowDTO) workflowDTO;
         //read the platform key of Stripe
         Stripe.apiKey = getPlatformAccountKey(subWorkflowDTO.getTenantId());

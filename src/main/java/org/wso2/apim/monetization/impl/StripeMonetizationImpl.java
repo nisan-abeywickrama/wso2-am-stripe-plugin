@@ -62,6 +62,7 @@ import org.wso2.apim.monetization.impl.model.GraphqlQueryModel;
 import org.wso2.apim.monetization.impl.model.MonetizedSubscription;
 import org.wso2.apim.monetization.impl.model.QueyAPIAccessTokenInterceptor;
 import org.wso2.apim.monetization.impl.model.graphQLResponseClient;
+import org.wso2.apim.monetization.impl.util.MonetizationUtil;
 import org.wso2.carbon.apimgt.api.APIAdmin;
 import org.wso2.carbon.apimgt.api.APIManagementException;
 import org.wso2.carbon.apimgt.api.APIProvider;
@@ -115,7 +116,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 import java.util.SortedSet;
 import java.util.TimeZone;
 
@@ -150,6 +150,7 @@ public class StripeMonetizationImpl implements Monetization {
      */
     public boolean createBillingPlan(SubscriptionPolicy subscriptionPolicy) throws MonetizationException {
 
+        MonetizationUtil.setProxy();
         try {
             //read tenant conf and get platform account key
             Stripe.apiKey = getStripePlatformAccountKey(subscriptionPolicy.getTenantDomain());
@@ -236,6 +237,7 @@ public class StripeMonetizationImpl implements Monetization {
      */
     public boolean updateBillingPlan(SubscriptionPolicy subscriptionPolicy) throws MonetizationException {
 
+        MonetizationUtil.setProxy();
         Map<String, String> planData = null;
         try {
             planData = stripeMonetizationDAO.getPlanData(subscriptionPolicy);
@@ -402,6 +404,7 @@ public class StripeMonetizationImpl implements Monetization {
      */
     public boolean deleteBillingPlan(SubscriptionPolicy subscriptionPolicy) throws MonetizationException {
 
+        MonetizationUtil.setProxy();
         //get old plan (if any) in the billing engine and delete
         Map<String, String> planData = null;
         try {
@@ -459,6 +462,7 @@ public class StripeMonetizationImpl implements Monetization {
     public boolean enableMonetization(String tenantDomain, API api, Map<String, String> monetizationProperties)
             throws MonetizationException {
 
+        MonetizationUtil.setProxy();
         String platformAccountKey = null;
         try {
             //read tenant conf and get platform account key
@@ -561,6 +565,7 @@ public class StripeMonetizationImpl implements Monetization {
     public boolean disableMonetization(String tenantDomain, API api, Map<String, String> monetizationProperties)
             throws MonetizationException {
 
+        MonetizationUtil.setProxy();
         String platformAccountKey = null;
         try {
             //read tenant conf and get platform account key
@@ -701,9 +706,9 @@ public class StripeMonetizationImpl implements Monetization {
 
         if (config == null) {
             // Retrieve the access token from api manager configurations.
-            config = ServiceReferenceHolder.getInstance().getAPIManagerConfigurationService().
-                    getAPIManagerConfiguration();
+            config = MonetizationUtil.getConfig();
         }
+        MonetizationUtil.setProxy();
         //used for stripe recording
         currentTimestamp = getTimestamp(toDate);
         //The implementation will be improved to use offset date time to get the time zone based on user input
@@ -1091,7 +1096,7 @@ public class StripeMonetizationImpl implements Monetization {
                         .query(query)
                         .aggregations(API_UUID, a -> a
                                 .terms(TermsAggregation.of(t -> t
-                                        .field(ELK_API_ID_COL)))
+                                            .field(ELK_API_ID_COL)))
                                 .aggregations(TENANT_DOMAIN_COL, b -> b
                                         .terms(TermsAggregation.of(t -> t
                                                 .field(ELK_TENANT_DOMAIN)))
@@ -1298,6 +1303,7 @@ public class StripeMonetizationImpl implements Monetization {
 
         Map<String, String> billingEngineUsageData = new HashMap<String, String>();
         String apiName = null;
+        MonetizationUtil.setProxy();
         try (Connection con = APIMgtDBUtil.getConnection()) {
             SubscribedAPI subscribedAPI = ApiMgtDAO.getInstance().getSubscriptionByUUID(subscriptionUUID);
             APIIdentifier apiIdentifier = subscribedAPI.getAPIIdentifier();
@@ -1509,28 +1515,32 @@ public class StripeMonetizationImpl implements Monetization {
      */
     private String getStripePlatformAccountKey(String tenantDomain) throws StripeMonetizationException {
 
-        try {
-            //get the stripe key of platform account from  tenant conf json file
-            JSONObject tenantConfig = APIUtil.getTenantConfig(tenantDomain);
-            if (tenantConfig.containsKey(StripeMonetizationConstants.MONETIZATION_INFO)) {
-                JSONObject monetizationInfo = (JSONObject) tenantConfig
-                        .get(StripeMonetizationConstants.MONETIZATION_INFO);
-                if (monetizationInfo.containsKey(StripeMonetizationConstants.BILLING_ENGINE_PLATFORM_ACCOUNT_KEY)) {
-                    String stripePlatformAccountKey = monetizationInfo
-                            .get(StripeMonetizationConstants.BILLING_ENGINE_PLATFORM_ACCOUNT_KEY).toString();
-                    if (StringUtils.isBlank(stripePlatformAccountKey)) {
-                        String errorMessage = "Stripe platform account key is empty for tenant : " + tenantDomain;
-                        throw new StripeMonetizationException(errorMessage);
+        if(Stripe.apiKey == null) {
+            try {
+                //get the stripe key of platform account from  tenant conf json file
+                JSONObject tenantConfig = APIUtil.getTenantConfig(tenantDomain);
+                if (tenantConfig.containsKey(StripeMonetizationConstants.MONETIZATION_INFO)) {
+                    JSONObject monetizationInfo = (JSONObject) tenantConfig
+                            .get(StripeMonetizationConstants.MONETIZATION_INFO);
+                    if (monetizationInfo.containsKey(StripeMonetizationConstants.BILLING_ENGINE_PLATFORM_ACCOUNT_KEY)) {
+                        String stripePlatformAccountKey = monetizationInfo
+                                .get(StripeMonetizationConstants.BILLING_ENGINE_PLATFORM_ACCOUNT_KEY).toString();
+                        if (StringUtils.isBlank(stripePlatformAccountKey)) {
+                            String errorMessage = "Stripe platform account key is empty for tenant : " + tenantDomain;
+                            throw new StripeMonetizationException(errorMessage);
+                        }
+                        return stripePlatformAccountKey;
                     }
-                    return stripePlatformAccountKey;
                 }
+            } catch (APIManagementException e) {
+                String errorMessage = "Failed to get the configuration for tenant from DB:  " + tenantDomain;
+                log.error(errorMessage);
+                throw new StripeMonetizationException(errorMessage, e);
             }
-        } catch (APIManagementException e) {
-            String errorMessage = "Failed to get the configuration for tenant from DB:  " + tenantDomain;
-            log.error(errorMessage);
-            throw new StripeMonetizationException(errorMessage, e);
+            return StringUtils.EMPTY;
+        } else {
+            return Stripe.apiKey;
         }
-        return StringUtils.EMPTY;
     }
 
     /**
@@ -1578,6 +1588,7 @@ public class StripeMonetizationImpl implements Monetization {
             throws StripeMonetizationException {
 
         try {
+            MonetizationUtil.setProxy();
             String tierUUID = ApiMgtDAO.getInstance().getSubscriptionPolicy(tier.getName(), tenantId).getUUID();
             //get plan ID from mapping table
             String planId = stripeMonetizationDAO.getBillingPlanId(tierUUID);
