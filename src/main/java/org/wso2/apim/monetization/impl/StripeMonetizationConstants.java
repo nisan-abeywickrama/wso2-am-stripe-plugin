@@ -162,6 +162,8 @@ public class StripeMonetizationConstants {
     public static final String ELK_TENANT_DOMAIN = "apiCreatorTenantDomain.keyword";
     public static final String APPLICATION_ID_COLUMN = "applicationId";
     public static final String ELK_APPLICATION_ID_COLUMN = "applicationId.keyword";
+    public static final String HTTP_PROTOCOL = "http";
+    public static final String HTTPS_PROTOCOL = "https";
 
     public static final String MONETIZATION_PROXY_ENABLE_CONFIG = "Monetization.ProxyEnabled";
 }

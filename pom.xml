@@ -20,6 +20,12 @@
             <groupId>org.wso2.carbon.apimgt</groupId>
             <artifactId>org.wso2.carbon.apimgt.impl</artifactId>
             <version>${carbon.apimgt.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.wso2.am.analytics.publisher</groupId>
+                    <artifactId>org.wso2.am.analytics.publisher.client</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.wso2.carbon.apimgt</groupId>
@@ -50,6 +56,12 @@
             <groupId>org.elasticsearch.client</groupId>
             <artifactId>elasticsearch-rest-client</artifactId>
             <version>${elastic.rest.client.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.httpcomponents</groupId>
+                    <artifactId>httpasyncclient</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>io.opentelemetry</groupId>
@@ -70,7 +82,8 @@
     </dependencies>
 
     <properties>
-        <carbon.apimgt.version>9.29.119</carbon.apimgt.version>
+<!--        TODO: UPDATE VERSION-->
+        <carbon.apimgt.version>9.32.119-SNAPSHOT</carbon.apimgt.version>
         <commons.lang.version>2.6</commons.lang.version>
         <stripe.version>9.8.0</stripe.version>
         <elastic.client.version>8.13.1</elastic.client.version>
