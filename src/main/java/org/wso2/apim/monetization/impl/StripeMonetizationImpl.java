@@ -724,7 +724,8 @@ public class StripeMonetizationImpl implements Monetization {
         String formattedFromDate = fromDate.concat(StripeMonetizationConstants.TIMEZONE_FORMAT);
 
         if (config.getFirstProperty("Analytics.Type") != null
-                && !config.getFirstProperty("Analytics.Type").equals("")) {
+                && !config.getFirstProperty("Analytics.Type").isEmpty()
+                && !config.getFirstProperty("Analytics.Type").equals("choreo")) {
             SearchResponse<Object> searchResponse = getUsageDataFromElasticsearch(fromDate, toDate);
 
             if (log.isDebugEnabled()) {
