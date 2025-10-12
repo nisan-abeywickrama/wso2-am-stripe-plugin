@@ -82,8 +82,7 @@
     </dependencies>
 
     <properties>
-<!--        TODO: UPDATE VERSION-->
-        <carbon.apimgt.version>9.32.119-SNAPSHOT</carbon.apimgt.version>
+        <carbon.apimgt.version>9.32.130</carbon.apimgt.version>
         <commons.lang.version>2.6</commons.lang.version>
         <stripe.version>9.8.0</stripe.version>
         <elastic.client.version>8.13.1</elastic.client.version>
