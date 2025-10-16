@@ -53,7 +53,9 @@ import org.apache.http.HttpHost;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.CredentialsProvider;
+import org.apache.http.conn.ssl.DefaultHostnameVerifier;
 import org.apache.http.impl.client.BasicCredentialsProvider;
+import org.apache.http.ssl.SSLContexts;
 import org.elasticsearch.client.RestClient;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
@@ -103,6 +105,7 @@ import org.wso2.carbon.user.api.Tenant;
 import org.wso2.carbon.user.api.UserStoreException;
 import org.wso2.carbon.utils.multitenancy.MultitenantConstants;
 
+import javax.net.ssl.SSLContext;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -128,6 +131,8 @@ import static org.wso2.apim.monetization.impl.StripeMonetizationConstants.ELK_TE
 import static org.wso2.apim.monetization.impl.StripeMonetizationConstants.PRODUCTS;
 import static org.wso2.apim.monetization.impl.StripeMonetizationConstants.REQUEST_TIMESTAMP_COLUMN;
 import static org.wso2.apim.monetization.impl.StripeMonetizationConstants.TENANT_DOMAIN_COL;
+import static org.wso2.apim.monetization.impl.StripeMonetizationConstants.HTTP_PROTOCOL;
+import static org.wso2.apim.monetization.impl.StripeMonetizationConstants.HTTPS_PROTOCOL;
 
 /**
  * This class is used to implement stripe based monetization
@@ -719,7 +724,8 @@ public class StripeMonetizationImpl implements Monetization {
         String formattedFromDate = fromDate.concat(StripeMonetizationConstants.TIMEZONE_FORMAT);
 
         if (config.getFirstProperty("Analytics.Type") != null
-                && !config.getFirstProperty("Analytics.Type").equals("")) {
+                && !config.getFirstProperty("Analytics.Type").isEmpty()
+                && !config.getFirstProperty("Analytics.Type").equals("choreo")) {
             SearchResponse<Object> searchResponse = getUsageDataFromElasticsearch(fromDate, toDate);
 
             if (log.isDebugEnabled()) {
@@ -1061,12 +1067,30 @@ public class StripeMonetizationImpl implements Monetization {
             analyticsIndex = DEFAULT_ELK_ANALYTICS_INDEX;
         }
         int port = config.getMonetizationConfigurationDto().getAnalyticsPort();
+        String protocol = config.getMonetizationConfigurationDto().getAnalyticsProtocol();
+        if (protocol == null) {
+            protocol = HTTP_PROTOCOL;
+        }
+
         List<JSONArray> tenantDomainsAndAPIs = getMonetizedAPIIdsAndTenantDomains();
         JSONArray tenants = tenantDomainsAndAPIs.get(0);
         JSONArray monetizedAPIs = tenantDomainsAndAPIs.get(1);
         final CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
         credentialsProvider.setCredentials(AuthScope.ANY, new UsernamePasswordCredentials(username,
                 new String(password, StandardCharsets.UTF_8)));
+
+        final SSLContext sslContext;
+        if (HTTPS_PROTOCOL.equalsIgnoreCase(protocol)) {
+            try {
+                sslContext = SSLContexts.custom()
+                        .loadTrustMaterial(ServiceReferenceHolder.getInstance().getTrustStore(), null)
+                        .build();
+            } catch (Exception e) {
+                throw new MonetizationException("Failed to initialize SSL context for Elasticsearch connection", e);
+            }
+        } else {
+            sslContext = null;
+        }
 
         if (tenantDomainsAndAPIs.size() == 2) {
             List<FieldValue> tenantList = new ArrayList<>();
@@ -1077,9 +1101,15 @@ public class StripeMonetizationImpl implements Monetization {
             for (Object api : monetizedAPIs) {
                 monetizedAPIsList.add(new FieldValue.Builder().stringValue((String) api).build());
             }
-            try (RestClient restClient = RestClient.builder(new HttpHost(hostname, port))
-                    .setHttpClientConfigCallback(httpClientBuilder -> httpClientBuilder
-                            .setDefaultCredentialsProvider(credentialsProvider)).build()) {
+            try (RestClient restClient = RestClient.builder(new HttpHost(hostname, port, protocol))
+                    .setHttpClientConfigCallback(httpClientBuilder -> {
+                        if (sslContext != null) {
+                            httpClientBuilder.setSSLContext(sslContext)
+                                    .setSSLHostnameVerifier(new DefaultHostnameVerifier());
+                        }
+                        return httpClientBuilder.setDefaultCredentialsProvider(credentialsProvider);
+                    }).build()) {
+
                 ElasticsearchTransport transport = new RestClientTransport(restClient, new JacksonJsonpMapper());
                 ElasticsearchClient elasticsearchClient = new ElasticsearchClient(transport);
 
@@ -1110,9 +1140,15 @@ public class StripeMonetizationImpl implements Monetization {
                 throw new MonetizationException("Error occurred while executing data retrieval from Elasticsearch", e);
             }
         } else {
-            try (RestClient restClient = RestClient.builder(new HttpHost(hostname, port))
-                    .setHttpClientConfigCallback(httpClientBuilder -> httpClientBuilder
-                            .setDefaultCredentialsProvider(credentialsProvider)).build()) {
+            try (RestClient restClient = RestClient.builder(new HttpHost(hostname, port, protocol))
+                    .setHttpClientConfigCallback(httpClientBuilder -> {
+                        if (sslContext != null) {
+                            httpClientBuilder.setSSLContext(sslContext)
+                                    .setSSLHostnameVerifier(new DefaultHostnameVerifier());
+                        }
+                        return httpClientBuilder.setDefaultCredentialsProvider(credentialsProvider);
+                    }).build()) {
+
                 ElasticsearchTransport transport = new RestClientTransport(restClient, new JacksonJsonpMapper());
                 ElasticsearchClient elasticsearchClient = new ElasticsearchClient(transport);
                 Query query = RangeQuery.of(r -> r.field(REQUEST_TIMESTAMP_COLUMN)
@@ -1658,7 +1694,7 @@ public class StripeMonetizationImpl implements Monetization {
         UserContext userCtx = new UserContext(username, org, properties, roles);
         try {
             PublisherAPISearchResult searchAPIs = apiPersistenceInstance.searchAPIsForPublisher(org, "", 0,
-                    Integer.MAX_VALUE, userCtx, null, null);
+                    Integer.MAX_VALUE, userCtx);
 
             if (searchAPIs != null) {
                 List<PublisherAPIInfo> list = searchAPIs.getPublisherAPIInfoList();
