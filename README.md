@@ -68,6 +68,17 @@ Exposes a REST API at `https://<host>:9443/api/am/stripe/`.
 | `/checkout-url` | GET | Returns the pending Stripe Checkout URL for a given workflow reference. Used by the DevPortal UI to redirect the subscriber to Stripe's hosted payment page. |
 | `/complete-session` | GET | Browser-redirect fallback path. After checkout, Stripe redirects the browser to `success_url?session_id={id}`. This endpoint approves the APIM workflow if the primary webhook delivery was delayed. |
 | `/portal-url` | GET | Creates a Stripe Billing Portal session for a given APIM subscription and returns the hosted URL. The subscriber uses this to update payment methods, view invoices, and manage their subscription. |
+| `/oidc/callback` | GET | OIDC authorization-code callback. Exchanges the code for a token, stores the authenticated username in the session, and redirects back to the original URL. |
+
+### OIDC Authentication
+
+The `/checkout-url` and `/portal-url` endpoints require the caller to be authenticated. If no valid session exists, the request is redirected for OIDC login, then back to the original URL after authentication.
+
+The OAuth2 service provider (`apim_stripe_service`) is registered automatically via the Dynamic Client Registration (DCR) API on the first OIDC request. After registration, apply the following manual configuration in the Management Console under the `apim_stripe_service` SP:
+
+1. Enable **SaaS Application**
+2. **Claim Configuration** → set Subject Claim URI to `http://wso2.org/claims/username`
+3. **Local & Outbound Authentication Configuration** → enable **Use tenant domain in local subject identifier**
 
 **Stripe events handled:**
 
@@ -79,7 +90,7 @@ Exposes a REST API at `https://<host>:9443/api/am/stripe/`.
 | `invoice.payment_failed` | Blocks the APIM subscription |
 | `invoice.payment_action_required` | Blocks the APIM subscription (requires subscriber SCA/3DS re-authentication) |
 | `customer.subscription.updated` | Blocks the APIM subscription when the Stripe status transitions to `past_due` or `unpaid` |
-| `customer.subscription.deleted` | Blocks the APIM subscription when the Stripe subscription is cancelled externally |
+| `customer.subscription.deleted` | Removes the APIM subscription and deletes the associated monetization record when the Stripe subscription is cancelled externally |
 
 ---
 

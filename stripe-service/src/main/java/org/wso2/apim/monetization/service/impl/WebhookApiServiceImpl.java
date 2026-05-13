@@ -52,7 +52,9 @@ import javax.ws.rs.core.Response;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Formatter;
+import java.util.List;
 import java.util.Map;
 import org.json.simple.JSONObject;
 
@@ -524,17 +526,17 @@ public class WebhookApiServiceImpl {
         }
 
         String timestamp = null;
-        String expectedSig = null;
+        List<String> v1Signatures = new ArrayList<>();
 
         for (String part : sigHeader.split(",")) {
             if (part.startsWith("t=")) {
                 timestamp = part.substring(2);
-            } else if (part.startsWith("v1=") && expectedSig == null) {
-                expectedSig = part.substring(3);
+            } else if (part.startsWith("v1=")) {
+                v1Signatures.add(part.substring(3));
             }
         }
 
-        if (timestamp == null || expectedSig == null) {
+        if (timestamp == null || v1Signatures.isEmpty()) {
             return false;
         }
 
@@ -552,7 +554,12 @@ public class WebhookApiServiceImpl {
         String signedPayload = timestamp + "." + payload;
         String computedSig = hmacSha256Hex(signedPayload, secret);
 
-        return constantTimeEquals(expectedSig, computedSig);
+        for (String candidate : v1Signatures) {
+            if (constantTimeEquals(candidate, computedSig)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String hmacSha256Hex(String data, String key) {
@@ -600,8 +607,7 @@ public class WebhookApiServiceImpl {
             throw new APIManagementException("No workflow found for reference: " + workflowReference);
         }
 
-        // Reconstruct as SubscriptionWorkflowDTO so WorkflowUtils.sendNotificationAfterWFComplete
-        // does not throw a ClassCastException.
+
         SubscriptionWorkflowDTO workflowDTO = new SubscriptionWorkflowDTO();
         workflowDTO.setWorkflowReference(baseDTO.getWorkflowReference());
         workflowDTO.setExternalWorkflowReference(baseDTO.getExternalWorkflowReference());
@@ -622,7 +628,6 @@ public class WebhookApiServiceImpl {
                 if (subscribedAPI.getAPIIdentifier() != null) {
                     workflowDTO.setApiName(subscribedAPI.getAPIIdentifier().getApiName());
                     workflowDTO.setApiVersion(subscribedAPI.getAPIIdentifier().getVersion());
-                    workflowDTO.setApiContext(subscribedAPI.getAPIIdentifier().getApiName());
                     workflowDTO.setApiProvider(subscribedAPI.getAPIIdentifier().getProviderName());
                 }
                 if (subscribedAPI.getSubscriber() != null) {

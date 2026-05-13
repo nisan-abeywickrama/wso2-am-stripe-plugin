@@ -945,6 +945,38 @@ public class StripeMonetizationDAO {
     }
 
     /**
+     * Returns the Stripe Checkout URL for the given APIM subscription UUID.
+     * Joins {@code AM_SUBSCRIPTION} and {@code AM_WORKFLOWS} to resolve the subscription UUID
+     * to an external workflow reference, then retrieves the URL from
+     * {@code AM_STRIPE_CHECKOUT_SESSIONS} where the session status is {@code PENDING}.
+     *
+     * @param subscriptionUuid the APIM subscription UUID
+     * @return the Stripe Checkout URL, or {@code null} if no pending session exists
+     * @throws StripeMonetizationException if a database error occurs
+     */
+    public String getCheckoutUrlBySubscriptionId(String subscriptionUuid) throws StripeMonetizationException {
+        Connection conn = null;
+        PreparedStatement ps = null;
+        ResultSet rs = null;
+        try {
+            conn = APIMgtDBUtil.getConnection();
+            ps = conn.prepareStatement(StripeMonetizationConstants.GET_CHECKOUT_URL_BY_SUBSCRIPTION_ID_SQL);
+            ps.setString(1, subscriptionUuid);
+            rs = ps.executeQuery();
+            if (rs.next()) {
+                return rs.getString("CHECKOUT_URL");
+            }
+        } catch (SQLException e) {
+            String errorMessage = "Failed to get checkout URL for subscription UUID: " + subscriptionUuid;
+            log.error(errorMessage, e);
+            throw new StripeMonetizationException(errorMessage, e);
+        } finally {
+            APIMgtDBUtil.closeAllConnections(ps, conn, rs);
+        }
+        return null;
+    }
+
+    /**
      * Returns the checkout URL for the given workflow reference.
      *
      * @param workflowReference external workflow reference
@@ -1057,6 +1089,59 @@ public class StripeMonetizationDAO {
             APIMgtDBUtil.closeAllConnections(ps, conn, rs);
         }
         return row;
+    }
+
+    /**
+     * Returns the subscriber username (USER_ID) who owns the APIM subscription identified by the given UUID.
+     *
+     * @param subscriptionUUID APIM subscription UUID
+     * @return subscriber username, or {@code null} if no matching subscription found
+     * @throws StripeMonetizationException if the DB query fails
+     */
+    public String getSubscriberNameBySubscriptionId(int subscriptionId) throws StripeMonetizationException {
+
+        Connection conn = null;
+        PreparedStatement ps = null;
+        ResultSet rs = null;
+        try {
+            conn = APIMgtDBUtil.getConnection();
+            ps = conn.prepareStatement(StripeMonetizationConstants.GET_SUBSCRIBER_BY_SUBSCRIPTION_ID_SQL);
+            ps.setInt(1, subscriptionId);
+            rs = ps.executeQuery();
+            if (rs.next()) {
+                return rs.getString("USER_ID");
+            }
+        } catch (SQLException e) {
+            String errorMessage = "Error retrieving subscriber for subscriptionId: " + subscriptionId;
+            log.error(errorMessage, e);
+            throw new StripeMonetizationException(errorMessage, e);
+        } finally {
+            APIMgtDBUtil.closeAllConnections(ps, conn, rs);
+        }
+        return null;
+    }
+
+    public String getSubscriberNameBySubscriptionUUID(String subscriptionUUID) throws StripeMonetizationException {
+
+        Connection conn = null;
+        PreparedStatement ps = null;
+        ResultSet rs = null;
+        try {
+            conn = APIMgtDBUtil.getConnection();
+            ps = conn.prepareStatement(StripeMonetizationConstants.GET_SUBSCRIBER_BY_SUBSCRIPTION_UUID_SQL);
+            ps.setString(1, subscriptionUUID);
+            rs = ps.executeQuery();
+            if (rs.next()) {
+                return rs.getString("USER_ID");
+            }
+        } catch (SQLException e) {
+            String errorMessage = "Error retrieving subscriber for subscription UUID: " + subscriptionUUID;
+            log.error(errorMessage, e);
+            throw new StripeMonetizationException(errorMessage, e);
+        } finally {
+            APIMgtDBUtil.closeAllConnections(ps, conn, rs);
+        }
+        return null;
     }
 
     /**

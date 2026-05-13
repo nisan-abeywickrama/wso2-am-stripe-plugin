@@ -189,6 +189,12 @@ public class StripeMonetizationConstants {
             " VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
     public static final String GET_CHECKOUT_URL_BY_WORKFLOW_REF_SQL =
             "SELECT CHECKOUT_URL FROM AM_STRIPE_CHECKOUT_SESSIONS WHERE WORKFLOW_REFERENCE = ?";
+    public static final String GET_CHECKOUT_URL_BY_SUBSCRIPTION_ID_SQL =
+            "SELECT s.CHECKOUT_URL FROM AM_STRIPE_CHECKOUT_SESSIONS s" +
+            " JOIN AM_WORKFLOWS w ON w.WF_EXTERNAL_REFERENCE = s.WORKFLOW_REFERENCE" +
+            " JOIN AM_SUBSCRIPTION sub ON CAST(sub.SUBSCRIPTION_ID AS CHAR(20)) = w.WF_REFERENCE" +
+            " WHERE sub.UUID = ? AND w.WF_TYPE = 'AM_SUBSCRIPTION_CREATION'" +
+            " AND s.STATUS = 'PENDING'";
     public static final String GET_CHECKOUT_SESSION_BY_SESSION_ID_SQL =
             "SELECT SESSION_ID, WORKFLOW_REFERENCE, SUBSCRIBER_ID, TENANT_ID, API_UUID, STATUS" +
             " FROM AM_STRIPE_CHECKOUT_SESSIONS WHERE SESSION_ID = ?";
@@ -213,6 +219,18 @@ public class StripeMonetizationConstants {
 
     // Tenant config key for per-tenant webhook secret
     public static final String STRIPE_WEBHOOK_SECRET = "StripeWebhookSecret";
+
+    public static final String GET_SUBSCRIBER_BY_SUBSCRIPTION_UUID_SQL =
+            "SELECT s.USER_ID FROM AM_SUBSCRIPTION sub " +
+            "JOIN AM_APPLICATION app ON sub.APPLICATION_ID = app.APPLICATION_ID " +
+            "JOIN AM_SUBSCRIBER s ON app.SUBSCRIBER_ID = s.SUBSCRIBER_ID " +
+            "WHERE sub.UUID = ?";
+
+    public static final String GET_SUBSCRIBER_BY_SUBSCRIPTION_ID_SQL =
+            "SELECT s.USER_ID FROM AM_SUBSCRIPTION sub " +
+            "JOIN AM_APPLICATION app ON sub.APPLICATION_ID = app.APPLICATION_ID " +
+            "JOIN AM_SUBSCRIBER s ON app.SUBSCRIBER_ID = s.SUBSCRIBER_ID " +
+            "WHERE sub.SUBSCRIPTION_ID = ?";
 
     // Stripe webhook event type
     public static final String STRIPE_WEBHOOK_EVENT_CHECKOUT_COMPLETED = "checkout.session.completed";

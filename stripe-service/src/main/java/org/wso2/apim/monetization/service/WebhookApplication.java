@@ -20,6 +20,7 @@ package org.wso2.apim.monetization.service;
 import com.fasterxml.jackson.jaxrs.json.JacksonJsonProvider;
 import org.wso2.apim.monetization.service.impl.CheckoutUrlApiServiceImpl;
 import org.wso2.apim.monetization.service.impl.CompleteSessionApiServiceImpl;
+import org.wso2.apim.monetization.service.impl.OidcCallbackApiServiceImpl;
 import org.wso2.apim.monetization.service.impl.PortalUrlApiServiceImpl;
 import org.wso2.apim.monetization.service.impl.WebhookApiServiceImpl;
 
@@ -42,6 +43,7 @@ public class WebhookApplication extends Application {
         singletons.add(new CheckoutUrlApiServiceImpl());
         singletons.add(new CompleteSessionApiServiceImpl());
         singletons.add(new PortalUrlApiServiceImpl());
+        singletons.add(new OidcCallbackApiServiceImpl());
         return singletons;
     }
 }

@@ -117,24 +117,24 @@
                         <Bundle-Name>${project.artifactId}</Bundle-Name>
                         <Private-Package>
                             co.elastic.clients.*,
-                            org.elasticsearch.client.*,
+                            org.elasticsearch.client.*
                         </Private-Package>
                         <Export-Package>
                             org.wso2.apim.monetization.impl.*,
-                            org.eclipse.parsson.*,
+                            org.eclipse.parsson.*
                         </Export-Package>
                         <Import-Package>
                             !com.google.gson.internal,
                             !com.stripe.*,
                             io.opentelemetry.api.common.*,
                             org.apache.http.impl.nio.*,
-                            org.apache.http.nio.*,
+                            org.apache.http.nio.*
                         </Import-Package>
                         <DynamicImport-Package>*</DynamicImport-Package>
                         <Embed-Dependency>
                             opentelemetry-api;scope=compile|runtime;inline=false,
                             httpasyncclient;scope=compile|runtime;inline=false,
-                            stripe-java;scope=compile|runtime;inline=false,
+                            stripe-java;scope=compile|runtime;inline=false
                         </Embed-Dependency>
                     </instructions>
                 </configuration>
