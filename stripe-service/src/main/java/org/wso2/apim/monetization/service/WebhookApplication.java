@@ -22,6 +22,7 @@ import org.wso2.apim.monetization.service.impl.CheckoutUrlApiServiceImpl;
 import org.wso2.apim.monetization.service.impl.CompleteSessionApiServiceImpl;
 import org.wso2.apim.monetization.service.impl.OidcCallbackApiServiceImpl;
 import org.wso2.apim.monetization.service.impl.PortalUrlApiServiceImpl;
+import org.wso2.apim.monetization.service.impl.ConfigureApiServiceImpl;
 import org.wso2.apim.monetization.service.impl.WebhookApiServiceImpl;
 
 import javax.ws.rs.ApplicationPath;
@@ -39,6 +40,7 @@ public class WebhookApplication extends Application {
     public Set<Object> getSingletons() {
         Set<Object> singletons = new HashSet<>();
         singletons.add(new JacksonJsonProvider());
+        singletons.add(new ConfigureApiServiceImpl());
         singletons.add(new WebhookApiServiceImpl());
         singletons.add(new CheckoutUrlApiServiceImpl());
         singletons.add(new CompleteSessionApiServiceImpl());
