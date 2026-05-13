@@ -520,8 +520,8 @@ public class StripeMonetizationDAO {
     /**
      * Look up the APIM subscription integer ID for a given Stripe subscription ID.
      *
-     * @param stripeSubscriptionId the Stripe subscription ID (e.g. "sub_xxxx")
-     * @return the APIM AM_SUBSCRIPTION.SUBSCRIPTION_ID, or -1 if not found
+     * @param stripeSubscriptionId the Stripe subscription ID
+     * @return the APIM subscription ID
      * @throws StripeMonetizationException if the database query fails
      */
     public int getApimSubscriptionIdByStripeSubId(String stripeSubscriptionId) throws StripeMonetizationException {
@@ -551,14 +551,11 @@ public class StripeMonetizationDAO {
     }
 
     /**
-     * Given an APIM subscription ID, returns a two-element String array:
-     *   [0] = Stripe subscription ID (e.g. "sub_xxxx")
-     *   [1] = Stripe shared customer ID (customer on the connected account)
-     * Returns {@code null} if no monetisation record exists for the subscription.
+     * Get the Stripe subscription ID and shared customer ID for a given APIM subscription ID.
      *
-     * @param apimSubscriptionId the integer primary key from AM_SUBSCRIPTION
-     * @return String[2] { stripeSubscriptionId, sharedCustomerId } or null
-     * @throws StripeMonetizationException if the database query fails
+     * @param apimSubscriptionId APIM subscription ID
+     * @return String array containing the Stripe subscription ID and shared customer ID, or {@code null} if not found
+     * @throws StripeMonetizationException if failed to retrieve Stripe subscription details
      */
     public String[] getStripeSubscriptionByApimSubId(int apimSubscriptionId) throws StripeMonetizationException {
         Connection connection = null;

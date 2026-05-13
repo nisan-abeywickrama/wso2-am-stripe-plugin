@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,16 +30,7 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
 /**
- * GET /api/am/stripe/portal-url?subscriptionId={uuid}&tenantDomain={domain}&returnUrl={url}
- *
- * Creates a Stripe Billing Portal session for the given APIM subscription and returns the
- * session URL. The subscriber is redirected to this URL to manage their payment method,
- * invoices, and subscription on the Stripe-hosted portal.
- *
- * The portal is opened on the API provider's connected Stripe account (where the subscription
- * actually lives), scoped to the customer that was created there during checkout.
- *
- * After the portal session closes, the subscriber is redirected to {@code returnUrl}.
+ * REST API service implementation for retrieving the Stripe Billing Portal URL.
  */
 @Path("/portal-url")
 public class PortalUrlApiServiceImpl {

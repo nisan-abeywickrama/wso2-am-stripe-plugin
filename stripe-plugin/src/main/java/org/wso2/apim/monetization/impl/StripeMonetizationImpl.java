@@ -1719,30 +1719,17 @@ public class StripeMonetizationImpl implements Monetization {
     }
 
     /**
-     * Creates a Stripe Billing Portal session for the given APIM subscription.
+     * Create a Stripe Billing Portal session for the given APIM subscription.
      *
-     * <p>Because subscriptions in Stripe Connect live on the <em>connected account</em> (the API
-     * provider's Stripe account), the billing portal session must also be opened on that connected
-     * account using the customer that was created there during checkout. This method:</p>
-     * <ol>
-     *   <li>Loads the APIM {@link SubscribedAPI} to resolve the API UUID and application.</li>
-     *   <li>Looks up the Stripe subscription ID and connected-account customer ID from the
-     *       monetisation DB ({@code AM_MONETIZATION_SUBSCRIPTIONS} joined with
-     *       {@code AM_MONETIZATION_SHARED_CUSTOMERS}).</li>
-     *   <li>Loads the API's monetisation properties to retrieve the connected account key.</li>
-     *   <li>Creates a {@code billingportal.Session} scoped to that connected account.</li>
-     * </ol>
-     *
-     * @param subscriptionUUID   UUID from {@code AM_SUBSCRIPTION}
-     * @param tenantDomain       tenant domain (used to load the platform API key)
-     * @param returnUrl          URL to redirect to after the portal session closes
+     * @param subscriptionUUID UUID of the APIM subscription
+     * @param tenantDomain     tenant domain used to load the platform API key
+     * @param returnUrl        URL to redirect to after the portal session closes
      * @return Stripe-hosted billing portal URL
-     * @throws StripeMonetizationException if the session cannot be created
+     * @throws StripeMonetizationException if failed to create the billing portal session
      */
     public String getBillingPortalUrl(String subscriptionUUID, String tenantDomain, String returnUrl)
             throws StripeMonetizationException {
 
-        // 1. Load APIM subscription to resolve apiUUID, applicationId and integer subscription ID
         SubscribedAPI subscribedAPI;
         try {
             subscribedAPI = ApiMgtDAO.getInstance().getSubscriptionByUUID(subscriptionUUID);
@@ -1757,16 +1744,14 @@ public class StripeMonetizationImpl implements Monetization {
         }
         int apimSubscriptionId = subscribedAPI.getSubscriptionId();
 
-        // 2. Retrieve Stripe subscription ID and shared customer ID from monetisation DB
         String[] stripeInfo = stripeMonetizationDAO.getStripeSubscriptionByApimSubId(apimSubscriptionId);
         if (stripeInfo == null) {
             throw new StripeMonetizationException(
                     "No Stripe subscription found for APIM subscription ID: " + apimSubscriptionId
                     + ". The subscription may not be monetised or checkout was not completed.");
         }
-        String sharedCustomerId = stripeInfo[1]; // customer on the connected account
+        String sharedCustomerId = stripeInfo[1];
 
-        // 3. Load the connected account key from the API's monetisation properties
         String apiUuid = subscribedAPI.getAPIIdentifier() != null
                 ? subscribedAPI.getAPIIdentifier().getUUID()
                 : subscribedAPI.getProductId().getUUID();
@@ -1805,7 +1790,6 @@ public class StripeMonetizationImpl implements Monetization {
                     "Connected account key is blank for API: " + publisherAPI.getApiName());
         }
 
-        // 4. Create billing portal session on the connected account
         String platformAccountKey = getStripePlatformAccountKey(tenantDomain);
         MonetizationUtil.setProxy();
         try {

@@ -88,10 +88,6 @@ public class StripeMonetizationConstants {
 
     public static final String DELETE_BE_SUBSCRIPTION_SQL = "DELETE FROM AM_MONETIZATION_SUBSCRIPTIONS WHERE ID=?";
 
-    /**
-     * Given an APIM subscription ID (AM_SUBSCRIPTION.SUBSCRIPTION_ID), fetch the Stripe subscription ID
-     * and the Stripe shared customer ID for the matching monetisation subscription.
-     */
     public static final String GET_STRIPE_SUBSCRIPTION_BY_APIM_SUB_ID =
             "SELECT ms.SUBSCRIPTION_ID AS STRIPE_SUB_ID, sc.SHARED_CUSTOMER_ID" +
             " FROM AM_SUBSCRIPTION s" +

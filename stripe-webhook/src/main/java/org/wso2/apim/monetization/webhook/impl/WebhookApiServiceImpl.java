@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -57,14 +57,7 @@ import java.util.Map;
 import org.json.simple.JSONObject;
 
 /**
- * POST /api/am/stripe/webhook
- *
- * Receives Stripe event push notifications.
- * Signature is verified natively (HMAC-SHA256) — no stripe-java dependency,
- * avoiding the Gson classloader conflict with the Carbon OSGi runtime.
- *
- * On checkout.session.completed: looks up the pending workflow by the session's
- * workflowReference metadata field and calls WorkflowExecutorFactory.complete().
+ * REST API service implementation for handling Stripe webhook event notifications.
  */
 @Path("/webhook")
 public class WebhookApiServiceImpl {
@@ -284,7 +277,7 @@ public class WebhookApiServiceImpl {
                 log.warn("No APIM subscription found for Stripe subscription: " + stripeSubId);
                 return Response.ok("{\"received\":true}").build();
             }
-            // Only unblock if currently BLOCKED (avoid no-op update and spurious notifications)
+            // Only unblock if currently BLOCKED
             String currentStatus = ApiMgtDAO.getInstance().getSubscriptionStatusById(apimSubId);
             if ("BLOCKED".equals(currentStatus)) {
                 unblockApimSubscription(apimSubId);
@@ -391,7 +384,6 @@ public class WebhookApiServiceImpl {
             log.warn("customer.subscription.updated event missing id field, ignoring");
             return Response.ok("{\"received\":true}").build();
         }
-        // Only act on states that require blocking; active/trialing recovery is handled by invoice events
         if (!"past_due".equals(stripeStatus) && !"unpaid".equals(stripeStatus)) {
             return Response.ok("{\"received\":true}").build();
         }

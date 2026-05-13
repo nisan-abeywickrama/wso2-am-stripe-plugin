@@ -120,8 +120,6 @@ public class StripeSubscriptionDeletionWorkflowExecutor extends WorkflowExecutor
         configMap.put(APIConstants.ALLOW_MULTIPLE_STATUS,
                 Boolean.toString(APIUtil.isAllowDisplayAPIsWithMultipleStatus()));
         apiPersistenceInstance = PersistenceManager.getPersistenceInstance(configMap, properties);
-        // Use per-request RequestOptions instead of the static Stripe.apiKey to be thread-safe
-        // in multi-tenant environments where concurrent requests may use different keys.
         String platformKey = getPlatformAccountKey(subWorkflowDTO.getTenantId());
         String connectedAccountKey = StringUtils.EMPTY;
         Organization org = new Organization(workflowDTO.getTenantDomain());
@@ -232,7 +230,6 @@ public class StripeSubscriptionDeletionWorkflowExecutor extends WorkflowExecutor
         configMap.put(APIConstants.ALLOW_MULTIPLE_STATUS,
                 Boolean.toString(APIUtil.isAllowDisplayAPIsWithMultipleStatus()));
         apiPersistenceInstance = PersistenceManager.getPersistenceInstance(configMap, properties);
-        // Use per-request RequestOptions instead of the static Stripe.apiKey to be thread-safe.
         String platformKey = getPlatformAccountKey(subWorkflowDTO.getTenantId());
         String connectedAccountKey = StringUtils.EMPTY;
         Organization org = new Organization(workflowDTO.getTenantDomain());

@@ -33,20 +33,7 @@ import javax.ws.rs.core.Response;
 import java.util.Map;
 
 /**
- * GET /api/am/stripe/complete-session?session_id={stripeSessionId}
- *
- * Browser-redirect path: after the subscriber completes payment on Stripe's hosted page,
- * Stripe redirects the browser to the success_url which triggers this endpoint with the
- * Stripe Checkout session ID. Must be @GET because Stripe fires a browser redirect (not POST).
- *
- * This endpoint:
- *   1. Looks up the checkout session in AM_STRIPE_CHECKOUT_SESSIONS by session_id
- *   2. Checks for idempotency (already COMPLETED → return 200)
- *   3. Retrieves the associated APIM workflow by workflowReference
- *   4. Calls WorkflowExecutorFactory.complete() to approve the subscription
- *
- * NOTE: The webhook (POST /webhook) is the primary completion path.
- * This endpoint exists as a fallback when the Stripe dashboard redirect fires before the webhook.
+ * REST API service implementation for completing a Stripe Checkout session.
  */
 @Path("/complete-session")
 public class CompleteSessionApiServiceImpl {

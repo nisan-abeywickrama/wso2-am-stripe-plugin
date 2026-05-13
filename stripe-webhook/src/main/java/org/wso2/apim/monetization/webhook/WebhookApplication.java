@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2025, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
+ *  Copyright (c) 2026, WSO2 LLC. (http://www.wso2.org) All Rights Reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,16 +30,6 @@ import java.util.Set;
 
 /**
  * JAX-RS Application class for the Stripe webhook REST API.
- * Registered via CXFNonSpringJaxrsServlet in web.xml.
- *
- * Context path (Carbon/Tomcat):
- *   WAR name  →  api#am#stripe.war
- *   URL prefix →  /api/am/stripe/
- *
- * Endpoints exposed:
- *   POST /api/am/stripe/webhook          — Stripe event push (HMAC verified)
- *   GET  /api/am/stripe/checkout-url     — Retrieve pending checkout URL by workflowReference
- *   POST /api/am/stripe/complete-session — Complete workflow after successful Stripe Checkout redirect
  */
 @ApplicationPath("/")
 public class WebhookApplication extends Application {
