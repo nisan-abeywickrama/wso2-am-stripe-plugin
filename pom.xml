@@ -18,7 +18,7 @@
 
     <modules>
         <module>stripe-plugin</module>
-        <module>stripe-webhook</module>
+        <module>stripe-service</module>
     </modules>
 
 </project>

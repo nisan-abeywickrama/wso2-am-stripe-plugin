@@ -15,7 +15,7 @@
  *
  */
 
-package org.wso2.apim.monetization.webhook.impl;
+package org.wso2.apim.monetization.service.impl;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

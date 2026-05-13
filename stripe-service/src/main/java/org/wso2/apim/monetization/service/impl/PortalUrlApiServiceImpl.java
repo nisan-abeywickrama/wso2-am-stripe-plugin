@@ -15,7 +15,7 @@
  *
  */
 
-package org.wso2.apim.monetization.webhook.impl;
+package org.wso2.apim.monetization.service.impl;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;

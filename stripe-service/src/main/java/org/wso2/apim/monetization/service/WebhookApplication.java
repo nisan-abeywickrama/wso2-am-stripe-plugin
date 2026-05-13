@@ -15,13 +15,13 @@
  *
  */
 
-package org.wso2.apim.monetization.webhook;
+package org.wso2.apim.monetization.service;
 
 import com.fasterxml.jackson.jaxrs.json.JacksonJsonProvider;
-import org.wso2.apim.monetization.webhook.impl.CheckoutUrlApiServiceImpl;
-import org.wso2.apim.monetization.webhook.impl.CompleteSessionApiServiceImpl;
-import org.wso2.apim.monetization.webhook.impl.PortalUrlApiServiceImpl;
-import org.wso2.apim.monetization.webhook.impl.WebhookApiServiceImpl;
+import org.wso2.apim.monetization.service.impl.CheckoutUrlApiServiceImpl;
+import org.wso2.apim.monetization.service.impl.CompleteSessionApiServiceImpl;
+import org.wso2.apim.monetization.service.impl.PortalUrlApiServiceImpl;
+import org.wso2.apim.monetization.service.impl.WebhookApiServiceImpl;
 
 import javax.ws.rs.ApplicationPath;
 import javax.ws.rs.core.Application;

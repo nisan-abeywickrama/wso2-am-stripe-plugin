@@ -10,17 +10,14 @@
         <version>1.6.0-SNAPSHOT</version>
     </parent>
 
-    <artifactId>org.wso2.apim.monetization.webhook</artifactId>
+    <artifactId>org.wso2.apim.monetization.service</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>war</packaging>
-    <name>WSO2 APIM Stripe Webhook REST API</name>
+    <name>WSO2 APIM Stripe Service REST API</name>
     <description>
         Standalone WAR deployed at /api/am/stripe/ on Carbon/Tomcat.
-        Exposes POST /webhook (Stripe events), POST /complete-session (browser-redirect path),
-        and GET /checkout-url for the DevPortal UI.
-        Webhook signature is verified natively via HMAC-SHA256 — no stripe-java dependency,
-        avoiding the Gson classloader conflict with the Carbon OSGi runtime.
-        Per-tenant webhook secret is read from tenant-conf.json MonetizationInfo.StripeWebhookSecret.
+        Exposes POST /webhook (Stripe events), GET /complete-session (browser-redirect path),
+        GET /checkout-url for the DevPortal UI, and GET /portal-url for the Billing Portal.
     </description>
 
     <properties>
