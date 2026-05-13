@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.wso2.apim.monetization</groupId>
+        <artifactId>wso2-apim-stripe-monetization</artifactId>
+        <version>1.6.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>org.wso2.apim.monetization.webhook</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>war</packaging>
+    <name>WSO2 APIM Stripe Webhook REST API</name>
+    <description>
+        Standalone WAR deployed at /api/am/stripe/ on Carbon/Tomcat.
+        Exposes POST /webhook (Stripe events), POST /complete-session (browser-redirect path),
+        and GET /checkout-url for the DevPortal UI.
+        Webhook signature is verified natively via HMAC-SHA256 — no stripe-java dependency,
+        avoiding the Gson classloader conflict with the Carbon OSGi runtime.
+        Per-tenant webhook secret is read from tenant-conf.json MonetizationInfo.StripeWebhookSecret.
+    </description>
+
+    <properties>
+        <carbon.apimgt.version>9.32.130</carbon.apimgt.version>
+        <stripe.plugin.version>1.6.0-SNAPSHOT</stripe.plugin.version>
+        <cxf.version>3.3.6</cxf.version>
+        <jackson.version>2.13.3</jackson.version>
+        <maven.compiler.version>3.8.1</maven.compiler.version>
+        <maven.war.version>3.2.3</maven.war.version>
+    </properties>
+
+    <dependencies>
+        <!-- CXF JAX-RS — bundled inside the WAR to avoid Carbon classloader issues -->
+        <dependency>
+            <groupId>org.apache.cxf</groupId>
+            <artifactId>cxf-rt-frontend-jaxrs</artifactId>
+            <version>${cxf.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.cxf</groupId>
+            <artifactId>cxf-rt-rs-security-cors</artifactId>
+            <version>${cxf.version}</version>
+        </dependency>
+
+        <!-- Jackson for JSON parsing — bundled inside the WAR -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.jaxrs</groupId>
+            <artifactId>jackson-jaxrs-json-provider</artifactId>
+            <version>${jackson.version}</version>
+        </dependency>
+
+        <!-- Stripe plugin — provided by the Carbon OSGi runtime (deployed to dropins/) -->
+        <dependency>
+            <groupId>org.wso2.apim.monetization</groupId>
+            <artifactId>org.wso2.apim.monetization.impl</artifactId>
+            <version>${stripe.plugin.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- APIM / Carbon APIs — provided by the Carbon server -->
+        <dependency>
+            <groupId>org.wso2.carbon.apimgt</groupId>
+            <artifactId>org.wso2.carbon.apimgt.impl</artifactId>
+            <version>${carbon.apimgt.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.wso2.carbon.apimgt</groupId>
+            <artifactId>org.wso2.carbon.apimgt.api</artifactId>
+            <version>${carbon.apimgt.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- JAX-RS API — provided by CXF in the WAR -->
+        <dependency>
+            <groupId>javax.ws.rs</groupId>
+            <artifactId>javax.ws.rs-api</artifactId>
+            <version>2.1.1</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Commons — provided by Carbon server -->
+        <dependency>
+            <groupId>commons-lang</groupId>
+            <artifactId>commons-lang</artifactId>
+            <version>2.6</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>commons-logging</groupId>
+            <artifactId>commons-logging</artifactId>
+            <version>1.2</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <repositories>
+        <repository>
+            <id>wso2-nexus</id>
+            <url>https://maven.wso2.org/nexus/content/groups/wso2-public/</url>
+            <releases>
+                <updatePolicy>daily</updatePolicy>
+                <checksumPolicy>ignore</checksumPolicy>
+            </releases>
+        </repository>
+    </repositories>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${maven.compiler.version}</version>
+                <configuration>
+                    <source>8</source>
+                    <target>8</target>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-war-plugin</artifactId>
+                <version>${maven.war.version}</version>
+                <configuration>
+                    <!--
+                        # maps to / in Carbon/Tomcat context path resolution
+                        so the WAR is accessible at: /api/am/stripe/
+                        Full webhook URL: https://<host>:9443/api/am/stripe/webhook
+                    -->
+                    <warName>api#am#stripe</warName>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

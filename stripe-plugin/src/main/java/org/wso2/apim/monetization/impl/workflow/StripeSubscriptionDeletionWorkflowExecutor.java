@@ -17,7 +17,7 @@
 package org.wso2.apim.monetization.impl.workflow;
 
 import com.google.gson.Gson;
-import com.stripe.Stripe;
+import com.stripe.exception.InvalidRequestException;
 import com.stripe.exception.StripeException;
 import com.stripe.model.Subscription;
 import com.stripe.net.RequestOptions;
@@ -51,6 +51,7 @@ import org.wso2.carbon.apimgt.persistence.APIPersistence;
 import org.wso2.carbon.apimgt.persistence.PersistenceManager;
 import org.wso2.carbon.apimgt.persistence.dto.Organization;
 import org.wso2.carbon.apimgt.persistence.dto.PublisherAPI;
+import org.wso2.carbon.apimgt.persistence.dto.PublisherAPIProduct;
 import org.wso2.carbon.apimgt.persistence.exceptions.APIPersistenceException;
 
 import java.util.HashMap;
@@ -119,8 +120,9 @@ public class StripeSubscriptionDeletionWorkflowExecutor extends WorkflowExecutor
         configMap.put(APIConstants.ALLOW_MULTIPLE_STATUS,
                 Boolean.toString(APIUtil.isAllowDisplayAPIsWithMultipleStatus()));
         apiPersistenceInstance = PersistenceManager.getPersistenceInstance(configMap, properties);
-        //read the platform key of Stripe
-        Stripe.apiKey = getPlatformAccountKey(subWorkflowDTO.getTenantId());
+        // Use per-request RequestOptions instead of the static Stripe.apiKey to be thread-safe
+        // in multi-tenant environments where concurrent requests may use different keys.
+        String platformKey = getPlatformAccountKey(subWorkflowDTO.getTenantId());
         String connectedAccountKey = StringUtils.EMPTY;
         Organization org = new Organization(workflowDTO.getTenantDomain());
         PublisherAPI publisherAPI = null;
@@ -147,8 +149,10 @@ public class StripeSubscriptionDeletionWorkflowExecutor extends WorkflowExecutor
             log.error(errorMessage);
             throw new WorkflowException(errorMessage);
         }
-        //needed to add,remove artifacts in connected account
-        RequestOptions requestOptions = RequestOptions.builder().setStripeAccount(connectedAccountKey).build();
+        RequestOptions requestOptions = RequestOptions.builder()
+                .setApiKey(platformKey)
+                .setStripeAccount(connectedAccountKey)
+                .build();
         try {
             //get the stripe subscription id
             monetizedSubscription = stripeMonetizationDAO
@@ -175,6 +179,24 @@ public class StripeSubscriptionDeletionWorkflowExecutor extends WorkflowExecutor
                             + " by Application : " + subWorkflowDTO.getApplicationName() + " is removed successfully ";
                     log.debug(msg);
                 }
+            } catch (InvalidRequestException ex) {
+                if ("resource_missing".equals(ex.getCode())) {
+                    log.warn("Stripe subscription not found, proceeding with APIM deletion: "
+                            + monetizedSubscription.getSubscriptionId());
+                    try {
+                        stripeMonetizationDAO.removeMonetizedSubscription(monetizedSubscription.getId());
+                    } catch (StripeMonetizationException dbEx) {
+                        String errorMessage = "Failed to remove monetization subscription info from DB of : "
+                                + subWorkflowDTO.getApiName() + " by Application : " + subWorkflowDTO.getApplicationName();
+                        log.error(errorMessage);
+                        throw new WorkflowException(errorMessage, dbEx);
+                    }
+                } else {
+                    String errorMessage = "Failed to remove subscription in billing engine for : "
+                            + subWorkflowDTO.getApiName() + " by Application : " + subWorkflowDTO.getApplicationName();
+                    log.error(errorMessage);
+                    throw new WorkflowException(errorMessage, ex);
+                }
             } catch (StripeException ex) {
                 String errorMessage = "Failed to remove subcription in billing engine for : "
                         + subWorkflowDTO.getApiName() + " by Application : " + subWorkflowDTO.getApplicationName();
@@ -199,11 +221,29 @@ public class StripeSubscriptionDeletionWorkflowExecutor extends WorkflowExecutor
         StripeMonetizationDAO stripeMonetizationDAO = new StripeMonetizationDAO();
         MonetizationUtil.setProxy();
         subWorkflowDTO = (SubscriptionWorkflowDTO) workflowDTO;
-        //read the platform key of Stripe
-        Stripe.apiKey = getPlatformAccountKey(subWorkflowDTO.getTenantId());
+        Properties properties = new Properties();
+        properties.put(APIConstants.ALLOW_MULTIPLE_STATUS, APIUtil.isAllowDisplayAPIsWithMultipleStatus());
+        properties.put(APIConstants.ALLOW_MULTIPLE_VERSIONS, APIUtil.isAllowDisplayMultipleVersions());
+        Map<String, String> configMap = new HashMap<>();
+        Map<String, String> configs = APIManagerConfiguration.getPersistenceProperties();
+        if (configs != null && !configs.isEmpty()) {
+            configMap.putAll(configs);
+        }
+        configMap.put(APIConstants.ALLOW_MULTIPLE_STATUS,
+                Boolean.toString(APIUtil.isAllowDisplayAPIsWithMultipleStatus()));
+        apiPersistenceInstance = PersistenceManager.getPersistenceInstance(configMap, properties);
+        // Use per-request RequestOptions instead of the static Stripe.apiKey to be thread-safe.
+        String platformKey = getPlatformAccountKey(subWorkflowDTO.getTenantId());
         String connectedAccountKey = StringUtils.EMPTY;
-        Map<String, String> monetizationProperties = new Gson().fromJson(apiProduct.getMonetizationProperties().toString(),
-                HashMap.class);
+        Organization org = new Organization(workflowDTO.getTenantDomain());
+        PublisherAPIProduct publisherAPIProduct = null;
+        try {
+            publisherAPIProduct = apiPersistenceInstance.getPublisherAPIProduct(org, apiProduct.getUuid());
+        } catch (APIPersistenceException e) {
+            throw new WorkflowException("Failed to retrieve the API Product of UUID: " + apiProduct.getUuid(), e);
+        }
+        Map<String, String> monetizationProperties = new Gson().fromJson(
+                publisherAPIProduct.getMonetizationProperties().toString(), HashMap.class);
         if (MapUtils.isNotEmpty(monetizationProperties) &&
                 monetizationProperties.containsKey(StripeMonetizationConstants.BILLING_ENGINE_CONNECTED_ACCOUNT_KEY)) {
             // get the key of the connected account
@@ -215,12 +255,15 @@ public class StripeSubscriptionDeletionWorkflowExecutor extends WorkflowExecutor
                 throw new WorkflowException(errorMessage);
             }
         } else {
-            String errorMessage = "Stripe key of the connected account is empty.";
+            String errorMessage = "Stripe key of the connected account is empty for API Product: "
+                    + apiProduct.getId().getName();
             log.error(errorMessage);
             throw new WorkflowException(errorMessage);
         }
-        //needed to add,remove artifacts in connected account
-        RequestOptions requestOptions = RequestOptions.builder().setStripeAccount(connectedAccountKey).build();
+        RequestOptions requestOptions = RequestOptions.builder()
+                .setApiKey(platformKey)
+                .setStripeAccount(connectedAccountKey)
+                .build();
         try {
             //get the stripe subscription id
             monetizedSubscription = stripeMonetizationDAO
@@ -246,6 +289,24 @@ public class StripeSubscriptionDeletionWorkflowExecutor extends WorkflowExecutor
                     String msg = "Monetized subscriprion for : " + subWorkflowDTO.getApiName()
                             + " by application : " + subWorkflowDTO.getApplicationName() + " is removed successfully ";
                     log.debug(msg);
+                }
+            } catch (InvalidRequestException ex) {
+                if ("resource_missing".equals(ex.getCode())) {
+                    log.warn("Stripe subscription not found, proceeding with APIM deletion: "
+                            + monetizedSubscription.getSubscriptionId());
+                    try {
+                        stripeMonetizationDAO.removeMonetizedSubscription(monetizedSubscription.getId());
+                    } catch (StripeMonetizationException dbEx) {
+                        String errorMessage = "Failed to remove monetization subscription info from DB of : "
+                                + subWorkflowDTO.getApiName() + " by Application : " + subWorkflowDTO.getApplicationName();
+                        log.error(errorMessage);
+                        throw new WorkflowException(errorMessage, dbEx);
+                    }
+                } else {
+                    String errorMessage = "Failed to remove subscription in billing engine for : "
+                            + subWorkflowDTO.getApiName() + " by Application : " + subWorkflowDTO.getApplicationName();
+                    log.error(errorMessage);
+                    throw new WorkflowException(errorMessage, ex);
                 }
             } catch (StripeException ex) {
                 String errorMessage = "Failed to remove subcription in billing engine for : "
