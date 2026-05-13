@@ -61,6 +61,7 @@ import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.wso2.apim.monetization.impl.model.GraphQLClient;
 import org.wso2.apim.monetization.impl.model.GraphqlQueryModel;
+import org.wso2.apim.monetization.impl.model.MonetizationPlatformCustomer;
 import org.wso2.apim.monetization.impl.model.MonetizedSubscription;
 import org.wso2.apim.monetization.impl.model.QueyAPIAccessTokenInterceptor;
 import org.wso2.apim.monetization.impl.model.graphQLResponseClient;
@@ -78,6 +79,7 @@ import org.wso2.carbon.apimgt.api.model.Application;
 import org.wso2.carbon.apimgt.api.model.Monetization;
 import org.wso2.carbon.apimgt.api.model.MonetizationUsagePublishInfo;
 import org.wso2.carbon.apimgt.api.model.SubscribedAPI;
+import org.wso2.carbon.apimgt.api.model.Subscriber;
 import org.wso2.carbon.apimgt.api.model.Tier;
 import org.wso2.carbon.apimgt.api.model.policy.SubscriptionPolicy;
 import org.wso2.carbon.apimgt.impl.APIAdminImpl;
@@ -156,9 +158,10 @@ public class StripeMonetizationImpl implements Monetization {
     public boolean createBillingPlan(SubscriptionPolicy subscriptionPolicy) throws MonetizationException {
 
         MonetizationUtil.setProxy();
+        String platformAccountKey;
         try {
             //read tenant conf and get platform account key
-            Stripe.apiKey = getStripePlatformAccountKey(subscriptionPolicy.getTenantDomain());
+            platformAccountKey = getStripePlatformAccountKey(subscriptionPolicy.getTenantDomain());
         } catch (StripeMonetizationException e) {
             String errorMessage = "Failed to get Stripe platform account key for tenant :  " +
                     subscriptionPolicy.getTenantDomain();
@@ -172,7 +175,7 @@ public class StripeMonetizationImpl implements Monetization {
         Timestamp timestamp = new Timestamp(new Date().getTime());
         String productCreationIdempotencyKey = subscriptionPolicy.getTenantDomain() + timestamp.toString();
         RequestOptions productRequestOptions = RequestOptions.builder().
-                setIdempotencyKey(productCreationIdempotencyKey).build();
+                setApiKey(platformAccountKey).setIdempotencyKey(productCreationIdempotencyKey).build();
         try {
             Product product = Product.create(productParams, productRequestOptions);
             String productId = product.getId();
@@ -207,7 +210,7 @@ public class StripeMonetizationImpl implements Monetization {
                 planParams.put(StripeMonetizationConstants.USAGE_TYPE, StripeMonetizationConstants.METERED_USAGE);
             }
             RequestOptions planRequestOptions = RequestOptions.builder().
-                    setIdempotencyKey(subscriptionPolicy.getUUID()).build();
+                    setApiKey(platformAccountKey).setIdempotencyKey(subscriptionPolicy.getUUID()).build();
             Plan plan = Plan.create(planParams, planRequestOptions);
             String createdPlanId = plan.getId();
             //put the newly created stripe plans and tiers into a map (to add data to the database)
@@ -256,9 +259,10 @@ public class StripeMonetizationImpl implements Monetization {
         String oldPlanId = null;
         String newProductId = null;
         String updatedPlanId = null;
+        String platformAccountKey;
         try {
             //read tenant-conf.json and get platform account key
-            Stripe.apiKey = getStripePlatformAccountKey(subscriptionPolicy.getTenantDomain());
+            platformAccountKey = getStripePlatformAccountKey(subscriptionPolicy.getTenantDomain());
         } catch (StripeMonetizationException e) {
             String errorMessage = "Failed to get Stripe platform account key for tenant :  " +
                     subscriptionPolicy.getTenantDomain() + " when updating billing plan.";
@@ -279,7 +283,7 @@ public class StripeMonetizationImpl implements Monetization {
             Timestamp timestamp = new Timestamp(new Date().getTime());
             String productCreationIdempotencyKey = subscriptionPolicy.getTenantDomain() + timestamp.toString();
             RequestOptions productRequestOptions = RequestOptions.builder().
-                    setIdempotencyKey(productCreationIdempotencyKey).build();
+                    setApiKey(platformAccountKey).setIdempotencyKey(productCreationIdempotencyKey).build();
             try {
                 Product product = Product.create(productParams, productRequestOptions);
                 newProductId = product.getId();
@@ -299,7 +303,7 @@ public class StripeMonetizationImpl implements Monetization {
         //delete old plan if exists
         if (StringUtils.isNotBlank(oldPlanId)) {
             try {
-                Plan oldPlan = Plan.retrieve(oldPlanId);
+                Plan oldPlan = Plan.retrieve(oldPlanId, RequestOptions.builder().setApiKey(platformAccountKey).build());
                 if (oldPlan != null) {
                     oldPlan.delete();
                 }
@@ -343,7 +347,7 @@ public class StripeMonetizationImpl implements Monetization {
             }
             Plan updatedPlan = null;
             try {
-                updatedPlan = Plan.create(planParams);
+                updatedPlan = Plan.create(planParams, RequestOptions.builder().setApiKey(platformAccountKey).build());
             } catch (StripeException e) {
                 String errorMessage = "Failed to create stripe plan for tier : " + subscriptionPolicy.getPolicyName();
                 //throw MonetizationException as it will be logged and handled by the caller
@@ -369,7 +373,7 @@ public class StripeMonetizationImpl implements Monetization {
                 stripeMonetizationDAO.deleteMonetizationPlanData(subscriptionPolicy);
                 //Remove old artifacts in the billing engine (if any)
                 if (StringUtils.isNotBlank(oldProductId)) {
-                    Product.retrieve(oldProductId).delete();
+                    Product.retrieve(oldProductId, RequestOptions.builder().setApiKey(platformAccountKey).build()).delete(RequestOptions.builder().setApiKey(platformAccountKey).build());
                 }
             } catch (StripeException e) {
                 String errorMessage = "Failed to delete old stripe product for : " + subscriptionPolicy.getPolicyName();
@@ -426,9 +430,10 @@ public class StripeMonetizationImpl implements Monetization {
         }
         String productId = planData.get(StripeMonetizationConstants.PRODUCT_ID);
         String planId = planData.get(StripeMonetizationConstants.PLAN_ID);
+        String platformAccountKey;
         try {
             //read tenant-conf.json and get platform account key
-            Stripe.apiKey = getStripePlatformAccountKey(subscriptionPolicy.getTenantDomain());
+            platformAccountKey = getStripePlatformAccountKey(subscriptionPolicy.getTenantDomain());
         } catch (StripeMonetizationException e) {
             String errorMessage = "Failed to get Stripe platform account key for tenant :  " +
                     subscriptionPolicy.getTenantDomain() + " when deleting billing plan.";
@@ -437,8 +442,9 @@ public class StripeMonetizationImpl implements Monetization {
         }
         if (StringUtils.isNotBlank(planId)) {
             try {
-                Plan.retrieve(planId).delete();
-                Product.retrieve(productId).delete();
+                RequestOptions deleteReqOpts = RequestOptions.builder().setApiKey(platformAccountKey).build();
+                Plan.retrieve(planId, deleteReqOpts).delete(deleteReqOpts);
+                Product.retrieve(productId, deleteReqOpts).delete(deleteReqOpts);
                 stripeMonetizationDAO.deleteMonetizationPlanData(subscriptionPolicy);
             } catch (StripeException e) {
                 String errorMessage = "Failed to delete billing plan resources of : "
@@ -502,13 +508,12 @@ public class StripeMonetizationImpl implements Monetization {
             String billingProductIdForApi = getBillingProductIdForApi(apiId);
             //create billing engine product if it does not exist
             if (StringUtils.isEmpty(billingProductIdForApi)) {
-                Stripe.apiKey = platformAccountKey;
                 Map<String, Object> productParams = new HashMap<String, Object>();
                 String stripeProductName = apiName + "-" + apiVersion + "-" + apiProvider;
                 productParams.put(APIConstants.POLICY_NAME_ELEM, stripeProductName);
                 productParams.put(APIConstants.TYPE, StripeMonetizationConstants.SERVICE_TYPE);
-                RequestOptions productRequestOptions = RequestOptions.builder().setStripeAccount(
-                        connectedAccountKey).build();
+                RequestOptions productRequestOptions = RequestOptions.builder().setApiKey(platformAccountKey)
+                        .setStripeAccount(connectedAccountKey).build();
                 try {
                     Product product = Product.create(productParams, productRequestOptions);
                     billingProductIdForApi = product.getId();
@@ -608,8 +613,8 @@ public class StripeMonetizationImpl implements Monetization {
             }
             Map<String, String> tierToBillingEnginePlanMap = stripeMonetizationDAO.getTierToBillingEnginePlanMapping
                     (apiId, billingProductIdForApi);
-            Stripe.apiKey = platformAccountKey;
-            RequestOptions requestOptions = RequestOptions.builder().setStripeAccount(connectedAccountKey).build();
+            RequestOptions requestOptions = RequestOptions.builder().setApiKey(platformAccountKey)
+                    .setStripeAccount(connectedAccountKey).build();
 
             for (Map.Entry<String, String> entry : tierToBillingEnginePlanMap.entrySet()) {
                 String planId = entry.getValue();
@@ -703,6 +708,7 @@ public class StripeMonetizationImpl implements Monetization {
         int counter = 0;
         APIAdmin apiAdmin = new APIAdminImpl();
         SubscriptionItem subscriptionItem = null;
+        String platformAccountKey = null;
 
         Date dateobj = new Date();
         SimpleDateFormat simpleDateFormat = new SimpleDateFormat(StripeMonetizationConstants.TIME_FORMAT);
@@ -779,7 +785,7 @@ public class StripeMonetizationImpl implements Monetization {
                                         PrivilegedCarbonContext.getThreadLocalCarbonContext()
                                                 .setTenantDomain(tenantDomain, true);
                                         //read tenant conf and get platform account key
-                                        Stripe.apiKey = getStripePlatformAccountKey(tenantDomain);
+                                        platformAccountKey = getStripePlatformAccountKey(tenantDomain);
                                     } catch (StripeMonetizationException e) {
                                         String errorMessage = "Failed to get Stripe platform account key for tenant :" +
                                                 "  " + tenantDomain + " when disabling monetization for : " + apiName;
@@ -826,6 +832,7 @@ public class StripeMonetizationImpl implements Monetization {
                                         PrivilegedCarbonContext.endTenantFlow();
                                     }
                                     RequestOptions subRequestOptions = RequestOptions.builder()
+                                            .setApiKey(platformAccountKey)
                                             .setStripeAccount(connectedAccountKey).build();
                                     Subscription sub = Subscription.retrieve(subscription.getSubscriptionId(),
                                             subRequestOptions);
@@ -843,6 +850,7 @@ public class StripeMonetizationImpl implements Monetization {
                                         usageRecordParams.put(StripeMonetizationConstants.ACTION,
                                                 StripeMonetizationConstants.INCREMENT);
                                         RequestOptions usageRequestOptions = RequestOptions.builder()
+                                                .setApiKey(platformAccountKey)
                                                 .setStripeAccount(connectedAccountKey)
                                                 .setIdempotencyKey(subscriptionItem.getId()
                                                         + lastPublishInfo.getLastPublishTime() + requestCount).build();
@@ -930,7 +938,7 @@ public class StripeMonetizationImpl implements Monetization {
                                 PrivilegedCarbonContext.getThreadLocalCarbonContext().
                                         setTenantDomain(tenantDomain, true);
                                 //read tenant conf and get platform account key
-                                Stripe.apiKey = getStripePlatformAccountKey(tenantDomain);
+                                platformAccountKey = getStripePlatformAccountKey(tenantDomain);
                             } catch (StripeMonetizationException e) {
                                 String errorMessage = "Failed to get Stripe platform account key for tenant :  " +
                                         tenantDomain + " when disabling monetization for : " + apiName;
@@ -976,7 +984,8 @@ public class StripeMonetizationImpl implements Monetization {
                                 PrivilegedCarbonContext.endTenantFlow();
                             }
                             RequestOptions subRequestOptions = RequestOptions.builder().
-                                    setStripeAccount(connectedAccountKey).build();
+                                    setApiKey(platformAccountKey)
+                                    .setStripeAccount(connectedAccountKey).build();
                             Subscription sub = Subscription.retrieve(subscription.getSubscriptionId(),
                                     subRequestOptions);
                             //get the first subscription item from the array
@@ -993,7 +1002,8 @@ public class StripeMonetizationImpl implements Monetization {
                                 usageRecordParams.put(StripeMonetizationConstants.ACTION,
                                         StripeMonetizationConstants.INCREMENT);
                                 RequestOptions usageRequestOptions = RequestOptions.builder().
-                                        setStripeAccount(connectedAccountKey).setIdempotencyKey(subscriptionItem.getId()
+                                        setApiKey(platformAccountKey)
+                                        .setStripeAccount(connectedAccountKey).setIdempotencyKey(subscriptionItem.getId()
                                                 + lastPublishInfo.getLastPublishTime() + requestCount).build();
                                 UsageRecord usageRecord = UsageRecord.createOnSubscriptionItem(
                                         subscriptionItem.getId(), usageRecordParams, usageRequestOptions);
@@ -1392,9 +1402,9 @@ public class StripeMonetizationImpl implements Monetization {
                     //throw MonetizationException as it will be logged and handled by the caller
                     throw new MonetizationException(errorMessage);
                 }
-                Stripe.apiKey = platformAccountKey;
                 //create request options to link with the connected account
-                RequestOptions requestOptions = RequestOptions.builder().setStripeAccount(connectedAccountKey).build();
+                RequestOptions requestOptions = RequestOptions.builder().setApiKey(platformAccountKey)
+                        .setStripeAccount(connectedAccountKey).build();
                 int applicationId = subscribedAPI.getApplication().getId();
                 String billingPlanSubscriptionId = stripeMonetizationDAO.getBillingEngineSubscriptionId(apiId,
                         applicationId);
@@ -1405,7 +1415,7 @@ public class StripeMonetizationImpl implements Monetization {
                     //throw MonetizationException as it will be logged and handled by the caller
                     throw new MonetizationException(errorMessage);
                 }
-                String usageType = billingEngineSubscription.getPlan().getUsageType();
+                String usageType = billingEngineSubscription.getItems().getData().get(0).getPlan().getUsageType();
                 boolean dynamicUsage = StripeMonetizationConstants.METERED_USAGE.equalsIgnoreCase(usageType);
                 boolean fixedRate = StripeMonetizationConstants.LICENSED_USAGE.equalsIgnoreCase(usageType);
                 if (!dynamicUsage && !fixedRate) {
@@ -1551,32 +1561,29 @@ public class StripeMonetizationImpl implements Monetization {
      */
     private String getStripePlatformAccountKey(String tenantDomain) throws StripeMonetizationException {
 
-        if(Stripe.apiKey == null) {
-            try {
-                //get the stripe key of platform account from  tenant conf json file
-                JSONObject tenantConfig = APIUtil.getTenantConfig(tenantDomain);
-                if (tenantConfig.containsKey(StripeMonetizationConstants.MONETIZATION_INFO)) {
-                    JSONObject monetizationInfo = (JSONObject) tenantConfig
-                            .get(StripeMonetizationConstants.MONETIZATION_INFO);
-                    if (monetizationInfo.containsKey(StripeMonetizationConstants.BILLING_ENGINE_PLATFORM_ACCOUNT_KEY)) {
-                        String stripePlatformAccountKey = monetizationInfo
-                                .get(StripeMonetizationConstants.BILLING_ENGINE_PLATFORM_ACCOUNT_KEY).toString();
-                        if (StringUtils.isBlank(stripePlatformAccountKey)) {
-                            String errorMessage = "Stripe platform account key is empty for tenant : " + tenantDomain;
-                            throw new StripeMonetizationException(errorMessage);
-                        }
-                        return stripePlatformAccountKey;
+        try {
+            //get the stripe key of platform account from tenant conf json file (always re-read for multi-tenancy)
+            JSONObject tenantConfig = APIUtil.getTenantConfig(tenantDomain);
+            if (tenantConfig.containsKey(StripeMonetizationConstants.MONETIZATION_INFO)) {
+                JSONObject monetizationInfo = (JSONObject) tenantConfig
+                        .get(StripeMonetizationConstants.MONETIZATION_INFO);
+                if (monetizationInfo.containsKey(StripeMonetizationConstants.BILLING_ENGINE_PLATFORM_ACCOUNT_KEY)) {
+                    String stripePlatformAccountKey = monetizationInfo
+                            .get(StripeMonetizationConstants.BILLING_ENGINE_PLATFORM_ACCOUNT_KEY).toString();
+                    if (StringUtils.isBlank(stripePlatformAccountKey)) {
+                        String errorMessage = "Stripe platform account key is empty for tenant : " + tenantDomain;
+                        throw new StripeMonetizationException(errorMessage);
                     }
+                    return stripePlatformAccountKey;
                 }
-            } catch (APIManagementException e) {
-                String errorMessage = "Failed to get the configuration for tenant from DB:  " + tenantDomain;
-                log.error(errorMessage);
-                throw new StripeMonetizationException(errorMessage, e);
             }
-            return StringUtils.EMPTY;
-        } else {
-            return Stripe.apiKey;
+        } catch (APIManagementException e) {
+            String errorMessage = "Failed to get the configuration for tenant from DB:  " + tenantDomain;
+            log.error(errorMessage);
+            throw new StripeMonetizationException(errorMessage, e);
         }
+        throw new StripeMonetizationException(
+                "BillingEnginePlatformAccountKey is not configured in MonetizationInfo for tenant : " + tenantDomain);
     }
 
     /**
@@ -1628,9 +1635,8 @@ public class StripeMonetizationImpl implements Monetization {
             String tierUUID = ApiMgtDAO.getInstance().getSubscriptionPolicy(tier.getName(), tenantId).getUUID();
             //get plan ID from mapping table
             String planId = stripeMonetizationDAO.getBillingPlanId(tierUUID);
-            Stripe.apiKey = platformAccountKey;
             //get that plan details
-            Plan billingPlan = Plan.retrieve(planId);
+            Plan billingPlan = Plan.retrieve(planId, RequestOptions.builder().setApiKey(platformAccountKey).build());
             //get the values from that plan and replicate it
             Map<String, Object> planParams = new HashMap<String, Object>();
             planParams.put(StripeMonetizationConstants.AMOUNT, billingPlan.getAmount());
@@ -1640,7 +1646,8 @@ public class StripeMonetizationImpl implements Monetization {
             planParams.put(StripeMonetizationConstants.PRODUCT, billingProductId);
             planParams.put(StripeMonetizationConstants.CURRENCY, billingPlan.getCurrency());
             planParams.put(StripeMonetizationConstants.USAGE_TYPE, billingPlan.getUsageType());
-            RequestOptions planRequestOptions = RequestOptions.builder().setStripeAccount(connectedAccountKey).build();
+            RequestOptions planRequestOptions = RequestOptions.builder().setApiKey(platformAccountKey)
+                    .setStripeAccount(connectedAccountKey).build();
             //create a new stripe plan for the tier
             Plan createdPlan = Plan.create(planParams, planRequestOptions);
             return createdPlan.getId();
@@ -1709,5 +1716,116 @@ public class StripeMonetizationImpl implements Monetization {
 
         Collections.sort(apiSortedList, new APINameComparator());
         return apiSortedList;
+    }
+
+    /**
+     * Creates a Stripe Billing Portal session for the given APIM subscription.
+     *
+     * <p>Because subscriptions in Stripe Connect live on the <em>connected account</em> (the API
+     * provider's Stripe account), the billing portal session must also be opened on that connected
+     * account using the customer that was created there during checkout. This method:</p>
+     * <ol>
+     *   <li>Loads the APIM {@link SubscribedAPI} to resolve the API UUID and application.</li>
+     *   <li>Looks up the Stripe subscription ID and connected-account customer ID from the
+     *       monetisation DB ({@code AM_MONETIZATION_SUBSCRIPTIONS} joined with
+     *       {@code AM_MONETIZATION_SHARED_CUSTOMERS}).</li>
+     *   <li>Loads the API's monetisation properties to retrieve the connected account key.</li>
+     *   <li>Creates a {@code billingportal.Session} scoped to that connected account.</li>
+     * </ol>
+     *
+     * @param subscriptionUUID   UUID from {@code AM_SUBSCRIPTION}
+     * @param tenantDomain       tenant domain (used to load the platform API key)
+     * @param returnUrl          URL to redirect to after the portal session closes
+     * @return Stripe-hosted billing portal URL
+     * @throws StripeMonetizationException if the session cannot be created
+     */
+    public String getBillingPortalUrl(String subscriptionUUID, String tenantDomain, String returnUrl)
+            throws StripeMonetizationException {
+
+        // 1. Load APIM subscription to resolve apiUUID, applicationId and integer subscription ID
+        SubscribedAPI subscribedAPI;
+        try {
+            subscribedAPI = ApiMgtDAO.getInstance().getSubscriptionByUUID(subscriptionUUID);
+        } catch (APIManagementException e) {
+            String errorMessage = "Failed to load APIM subscription for billing portal, UUID: " + subscriptionUUID;
+            log.error(errorMessage, e);
+            throw new StripeMonetizationException(errorMessage, e);
+        }
+        if (subscribedAPI == null) {
+            throw new StripeMonetizationException(
+                    "APIM subscription not found for UUID: " + subscriptionUUID);
+        }
+        int apimSubscriptionId = subscribedAPI.getSubscriptionId();
+
+        // 2. Retrieve Stripe subscription ID and shared customer ID from monetisation DB
+        String[] stripeInfo = stripeMonetizationDAO.getStripeSubscriptionByApimSubId(apimSubscriptionId);
+        if (stripeInfo == null) {
+            throw new StripeMonetizationException(
+                    "No Stripe subscription found for APIM subscription ID: " + apimSubscriptionId
+                    + ". The subscription may not be monetised or checkout was not completed.");
+        }
+        String sharedCustomerId = stripeInfo[1]; // customer on the connected account
+
+        // 3. Load the connected account key from the API's monetisation properties
+        String apiUuid = subscribedAPI.getAPIIdentifier() != null
+                ? subscribedAPI.getAPIIdentifier().getUUID()
+                : subscribedAPI.getProductId().getUUID();
+        Properties persistenceProps = new Properties();
+        persistenceProps.put(APIConstants.ALLOW_MULTIPLE_STATUS, APIUtil.isAllowDisplayAPIsWithMultipleStatus());
+        persistenceProps.put(APIConstants.ALLOW_MULTIPLE_VERSIONS, APIUtil.isAllowDisplayMultipleVersions());
+        Map<String, String> configMap = new HashMap<>();
+        Map<String, String> configs = APIManagerConfiguration.getPersistenceProperties();
+        if (configs != null && !configs.isEmpty()) {
+            configMap.putAll(configs);
+        }
+        configMap.put(APIConstants.ALLOW_MULTIPLE_STATUS,
+                Boolean.toString(APIUtil.isAllowDisplayAPIsWithMultipleStatus()));
+        APIPersistence persistence = PersistenceManager.getPersistenceInstance(configMap, persistenceProps);
+        Organization org = new Organization(tenantDomain);
+        PublisherAPI publisherAPI;
+        try {
+            publisherAPI = persistence.getPublisherAPI(org, apiUuid);
+        } catch (APIPersistenceException e) {
+            String errorMessage = "Failed to load API for billing portal, UUID: " + apiUuid;
+            log.error(errorMessage, e);
+            throw new StripeMonetizationException(errorMessage, e);
+        }
+        Map<String, String> monetizationProperties = new Gson().fromJson(
+                publisherAPI.getMonetizationProperties().toString(), HashMap.class);
+        if (!MapUtils.isNotEmpty(monetizationProperties)
+                || !monetizationProperties.containsKey(
+                        StripeMonetizationConstants.BILLING_ENGINE_CONNECTED_ACCOUNT_KEY)) {
+            throw new StripeMonetizationException(
+                    "Connected account key not found for API: " + publisherAPI.getApiName());
+        }
+        String connectedAccountKey = monetizationProperties.get(
+                StripeMonetizationConstants.BILLING_ENGINE_CONNECTED_ACCOUNT_KEY);
+        if (StringUtils.isBlank(connectedAccountKey)) {
+            throw new StripeMonetizationException(
+                    "Connected account key is blank for API: " + publisherAPI.getApiName());
+        }
+
+        // 4. Create billing portal session on the connected account
+        String platformAccountKey = getStripePlatformAccountKey(tenantDomain);
+        MonetizationUtil.setProxy();
+        try {
+            com.stripe.param.billingportal.SessionCreateParams params =
+                    com.stripe.param.billingportal.SessionCreateParams.builder()
+                            .setCustomer(sharedCustomerId)
+                            .setReturnUrl(returnUrl)
+                            .build();
+            RequestOptions requestOptions = RequestOptions.builder()
+                    .setApiKey(platformAccountKey)
+                    .setStripeAccount(connectedAccountKey)
+                    .build();
+            com.stripe.model.billingportal.Session session =
+                    com.stripe.model.billingportal.Session.create(params, requestOptions);
+            return session.getUrl();
+        } catch (StripeException e) {
+            String errorMessage = "Failed to create billing portal session for APIM subscription ID: "
+                    + apimSubscriptionId;
+            log.error(errorMessage, e);
+            throw new StripeMonetizationException(errorMessage, e);
+        }
     }
 }
