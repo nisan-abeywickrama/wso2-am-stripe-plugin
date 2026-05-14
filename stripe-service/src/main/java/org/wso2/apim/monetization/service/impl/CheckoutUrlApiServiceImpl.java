@@ -91,10 +91,15 @@ public class CheckoutUrlApiServiceImpl {
             }
         }
 
+        String normalisedUser = username;
+        if (normalisedUser.endsWith("@carbon.super")) {
+            normalisedUser = normalisedUser.substring(0, normalisedUser.lastIndexOf("@carbon.super"));
+        }
+
         try {
             String owner = StripeMonetizationDAO.getInstance()
                     .getSubscriberNameBySubscriptionUUID(subscriptionUuid);
-            if (owner == null || !owner.equals(username)) {
+            if (owner == null || !owner.equalsIgnoreCase(normalisedUser)) {
                 return Response.status(Response.Status.FORBIDDEN)
                         .entity("{\"error\":\"You are not authorized to access this subscription\"}")
                         .build();

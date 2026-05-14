@@ -305,7 +305,7 @@ public class StripeMonetizationImpl implements Monetization {
             try {
                 Plan oldPlan = Plan.retrieve(oldPlanId, RequestOptions.builder().setApiKey(platformAccountKey).build());
                 if (oldPlan != null) {
-                    oldPlan.delete();
+                    oldPlan.delete(RequestOptions.builder().setApiKey(platformAccountKey).build());
                 }
             } catch (StripeException e) {
                 String errorMessage = "Failed to delete old plan for policy : " + subscriptionPolicy.getPolicyName();
@@ -1777,7 +1777,7 @@ public class StripeMonetizationImpl implements Monetization {
         }
         Map<String, String> monetizationProperties = new Gson().fromJson(
                 publisherAPI.getMonetizationProperties().toString(), HashMap.class);
-        if (!MapUtils.isNotEmpty(monetizationProperties)
+        if (MapUtils.isEmpty(monetizationProperties)
                 || !monetizationProperties.containsKey(
                         StripeMonetizationConstants.BILLING_ENGINE_CONNECTED_ACCOUNT_KEY)) {
             throw new StripeMonetizationException(

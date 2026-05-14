@@ -144,6 +144,10 @@ final class OidcUtil {
         }
         byte[] payloadBytes = Base64.getUrlDecoder().decode(padBase64(parts[1]));
         JsonNode payload = MAPPER.readTree(payloadBytes);
+        long exp = payload.path("exp").asLong(0);
+        if (exp > 0 && System.currentTimeMillis() / 1000L > exp) {
+            throw new IOException("id_token has expired");
+        }
         String sub = payload.path("sub").asText(null);
         if (sub == null || sub.isEmpty()) {
             throw new IOException("No 'sub' claim in id_token payload: "

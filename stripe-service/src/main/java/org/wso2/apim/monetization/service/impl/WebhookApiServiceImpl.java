@@ -25,6 +25,8 @@ import org.wso2.apim.monetization.impl.StripeMonetizationConstants;
 import org.wso2.apim.monetization.impl.StripeMonetizationDAO;
 import org.wso2.carbon.apimgt.api.APIManagementException;
 import org.wso2.carbon.apimgt.api.model.APIIdentifier;
+import org.wso2.carbon.apimgt.api.model.APIProductIdentifier;
+import org.wso2.carbon.apimgt.impl.APIConstants;
 import org.wso2.carbon.apimgt.impl.utils.APIUtil;
 import org.wso2.carbon.apimgt.api.model.SubscribedAPI;
 import org.wso2.carbon.apimgt.impl.dao.ApiMgtDAO;
@@ -36,9 +38,9 @@ import org.wso2.carbon.apimgt.impl.workflow.WorkflowExecutor;
 import org.wso2.carbon.apimgt.impl.workflow.WorkflowException;
 import org.wso2.carbon.apimgt.impl.workflow.WorkflowExecutorFactory;
 import org.wso2.carbon.apimgt.impl.workflow.WorkflowStatus;
-import org.wso2.carbon.utils.multitenancy.MultitenantUtils;
 
 import org.wso2.apim.monetization.impl.StripeMonetizationException;
+import org.wso2.apim.monetization.impl.util.MonetizationUtil;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import javax.ws.rs.Consumes;
@@ -132,15 +134,15 @@ public class WebhookApiServiceImpl {
         } else if (StripeMonetizationConstants.STRIPE_WEBHOOK_EVENT_CHECKOUT_EXPIRED.equals(eventType)) {
             return handleCheckoutSessionExpired(dataObject);
         } else if (StripeMonetizationConstants.STRIPE_WEBHOOK_EVENT_INVOICE_PAYMENT_FAILED.equals(eventType)) {
-            return handleInvoicePaymentFailed(dataObject);
+            return handleInvoicePaymentFailed(dataObject, tenantDomain);
         } else if (StripeMonetizationConstants.STRIPE_WEBHOOK_EVENT_INVOICE_PAYMENT_SUCCEEDED.equals(eventType)) {
-            return handleInvoicePaymentSucceeded(dataObject);
+            return handleInvoicePaymentSucceeded(dataObject, tenantDomain);
         } else if (StripeMonetizationConstants.STRIPE_WEBHOOK_EVENT_INVOICE_PAYMENT_ACTION_REQUIRED.equals(eventType)) {
-            return handleInvoicePaymentActionRequired(dataObject);
+            return handleInvoicePaymentActionRequired(dataObject, tenantDomain);
         } else if (StripeMonetizationConstants.STRIPE_WEBHOOK_EVENT_SUBSCRIPTION_DELETED.equals(eventType)) {
-            return handleSubscriptionDeleted(dataObject);
+            return handleSubscriptionDeleted(dataObject, tenantDomain);
         } else if (StripeMonetizationConstants.STRIPE_WEBHOOK_EVENT_SUBSCRIPTION_UPDATED.equals(eventType)) {
-            return handleSubscriptionUpdated(dataObject);
+            return handleSubscriptionUpdated(dataObject, tenantDomain);
         } else {
             return Response.ok("{\"received\":true}").build();
         }
@@ -157,17 +159,53 @@ public class WebhookApiServiceImpl {
                     .build();
         }
 
+        Map<String, String> sessionRow;
         try {
-            Map<String, String> sessionRow = StripeMonetizationDAO.getInstance().getCheckoutSession(sessionId);
-            String existingStatus = sessionRow.get(StripeMonetizationConstants.CHECKOUT_COL_STATUS);
-            if (StripeMonetizationConstants.CHECKOUT_SESSION_STATUS_COMPLETED.equals(existingStatus)) {
+            sessionRow = StripeMonetizationDAO.getInstance().getCheckoutSession(sessionId);
+        } catch (StripeMonetizationException e) {
+            log.error("Failed to retrieve checkout session for sessionId: " + sessionId, e);
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("{\"error\":\"Database error\"}")
+                    .build();
+        }
+
+        if (sessionRow == null || sessionRow.isEmpty()) {
+            log.warn("No checkout session record found for sessionId: " + sessionId);
+            return Response.ok("{\"received\":true}").build();
+        }
+
+        String tenantIdStr = sessionRow.get(StripeMonetizationConstants.CHECKOUT_COL_TENANT_ID);
+        String apiUuid = sessionRow.get(StripeMonetizationConstants.CHECKOUT_COL_API_UUID);
+        int tenantId;
+        try {
+            tenantId = Integer.parseInt(tenantIdStr);
+        } catch (NumberFormatException e) {
+            log.error("Invalid tenantId in checkout session row for sessionId: " + sessionId, e);
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("{\"error\":\"Invalid session data\"}")
+                    .build();
+        }
+        String tenantDomain = APIUtil.getTenantDomainFromTenantId(tenantId);
+        try {
+            MonetizationUtil.requireCheckoutSessionPaid(sessionId, tenantId, apiUuid, tenantDomain);
+        } catch (StripeMonetizationException e) {
+            log.warn("Stripe session payment not confirmed, deferring activation: sessionId="
+                    + sessionId + " — " + e.getMessage());
+            return Response.status(Response.Status.PAYMENT_REQUIRED)
+                    .entity("{\"error\":\"Payment not yet confirmed\"}")
+                    .build();
+        }
+
+        try {
+            boolean claimed = StripeMonetizationDAO.getInstance().claimCheckoutSession(sessionId);
+            if (!claimed) {
                 if (log.isDebugEnabled()) {
-                    log.debug("Checkout session already completed, skipping: " + sessionId);
+                    log.debug("Checkout session already claimed or not found, skipping: " + sessionId);
                 }
                 return Response.ok("{\"received\":true}").build();
             }
         } catch (StripeMonetizationException e) {
-            log.error("Error checking checkout session status for session: " + sessionId, e);
+            log.error("Failed to claim checkout session for sessionId: " + sessionId, e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("{\"error\":\"Database error\"}")
                     .build();
@@ -238,7 +276,7 @@ public class WebhookApiServiceImpl {
         return Response.ok("{\"received\":true}").build();
     }
 
-    private Response handleInvoicePaymentFailed(JsonNode invoiceObject) {
+    private Response handleInvoicePaymentFailed(JsonNode invoiceObject, String tenantDomain) {
         String stripeSubId = extractInvoiceSubscriptionId(invoiceObject);
         if (stripeSubId == null || stripeSubId.isEmpty()) {
             log.debug("invoice.payment_failed event has no subscription field (non-subscription invoice), ignoring");
@@ -250,7 +288,7 @@ public class WebhookApiServiceImpl {
                 log.warn("No APIM subscription found for Stripe subscription: " + stripeSubId);
                 return Response.ok("{\"received\":true}").build();
             }
-            blockApimSubscription(apimSubId);
+            blockApimSubscription(apimSubId, tenantDomain);
             log.info("APIM subscription blocked due to payment failure: apimSubId=" + apimSubId
                     + ", stripeSubId=" + stripeSubId);
         } catch (StripeMonetizationException e) {
@@ -267,7 +305,7 @@ public class WebhookApiServiceImpl {
         return Response.ok("{\"received\":true}").build();
     }
 
-    private Response handleInvoicePaymentSucceeded(JsonNode invoiceObject) {
+    private Response handleInvoicePaymentSucceeded(JsonNode invoiceObject, String tenantDomain) {
         String stripeSubId = extractInvoiceSubscriptionId(invoiceObject);
         if (stripeSubId == null || stripeSubId.isEmpty()) {
             log.debug("invoice.payment_succeeded event has no subscription field (non-subscription invoice), ignoring");
@@ -282,7 +320,7 @@ public class WebhookApiServiceImpl {
             // Only unblock if currently BLOCKED
             String currentStatus = ApiMgtDAO.getInstance().getSubscriptionStatusById(apimSubId);
             if ("BLOCKED".equals(currentStatus)) {
-                unblockApimSubscription(apimSubId);
+                unblockApimSubscription(apimSubId, tenantDomain);
                 log.info("APIM subscription unblocked after successful payment: apimSubId=" + apimSubId
                         + ", stripeSubId=" + stripeSubId);
             } else {
@@ -307,7 +345,7 @@ public class WebhookApiServiceImpl {
      * Fired when a recurring invoice requires customer action (e.g. SCA/3DS on renewal).
      * Blocks the APIM subscription until the customer authenticates via the hosted invoice URL.
      */
-    private Response handleInvoicePaymentActionRequired(JsonNode invoiceObject) {
+    private Response handleInvoicePaymentActionRequired(JsonNode invoiceObject, String tenantDomain) {
         String stripeSubId = extractInvoiceSubscriptionId(invoiceObject);
         if (stripeSubId == null || stripeSubId.isEmpty()) {
             log.warn("invoice.payment_action_required event missing subscription field, ignoring");
@@ -319,7 +357,7 @@ public class WebhookApiServiceImpl {
                 log.warn("No APIM subscription found for Stripe subscription: " + stripeSubId);
                 return Response.ok("{\"received\":true}").build();
             }
-            blockApimSubscription(apimSubId);
+            blockApimSubscription(apimSubId, tenantDomain);
             log.info("APIM subscription blocked pending customer authentication (SCA): apimSubId=" + apimSubId
                     + ", stripeSubId=" + stripeSubId);
             if (log.isDebugEnabled()) {
@@ -340,7 +378,7 @@ public class WebhookApiServiceImpl {
         return Response.ok("{\"received\":true}").build();
     }
 
-    private Response handleSubscriptionDeleted(JsonNode subscriptionObject) {
+    private Response handleSubscriptionDeleted(JsonNode subscriptionObject, String tenantDomain) {
         String stripeSubId = subscriptionObject.path("id").asText();
         if (stripeSubId == null || stripeSubId.isEmpty()) {
             log.warn("customer.subscription.deleted event missing id field, ignoring");
@@ -357,7 +395,7 @@ public class WebhookApiServiceImpl {
             if (monetizationRowId >= 0) {
                 dao.removeMonetizedSubscription(monetizationRowId);
             }
-            removeApimSubscription(apimSubId);
+            removeApimSubscription(apimSubId, tenantDomain);
             log.info("APIM subscription and monetization record removed following Stripe cancellation:"
                     + " apimSubId=" + apimSubId + ", stripeSubId=" + stripeSubId);
         } catch (StripeMonetizationException e) {
@@ -378,7 +416,7 @@ public class WebhookApiServiceImpl {
      * Syncs APIM subscription state when Stripe transitions a subscription to past_due or unpaid.
      * Active/trialing transitions are ignored — those are handled by invoice.payment_succeeded.
      */
-    private Response handleSubscriptionUpdated(JsonNode subscriptionObject) {
+    private Response handleSubscriptionUpdated(JsonNode subscriptionObject, String tenantDomain) {
         String stripeSubId = subscriptionObject.path("id").asText();
         String stripeStatus = subscriptionObject.path("status").asText();
 
@@ -395,7 +433,7 @@ public class WebhookApiServiceImpl {
                 log.warn("No APIM subscription found for Stripe subscription: " + stripeSubId);
                 return Response.ok("{\"received\":true}").build();
             }
-            blockApimSubscription(apimSubId);
+            blockApimSubscription(apimSubId, tenantDomain);
             log.info("APIM subscription blocked due to Stripe subscription status '" + stripeStatus
                     + "': apimSubId=" + apimSubId + ", stripeSubId=" + stripeSubId);
         } catch (StripeMonetizationException e) {
@@ -441,58 +479,52 @@ public class WebhookApiServiceImpl {
     /**
      * Updates the APIM subscription status to BLOCKED in the DB and fires a gateway notification.
      */
-    private void blockApimSubscription(int subscriptionId) throws APIManagementException {
-        updateApimSubscriptionStatus(subscriptionId, "BLOCKED");
+    private void blockApimSubscription(int subscriptionId, String tenantDomain) throws APIManagementException {
+        updateApimSubscriptionStatus(subscriptionId, "BLOCKED", tenantDomain);
     }
 
-    /**
-     * Updates the APIM subscription status to UNBLOCKED in the DB and fires a gateway notification.
-     */
-    private void unblockApimSubscription(int subscriptionId) throws APIManagementException {
-        updateApimSubscriptionStatus(subscriptionId, "UNBLOCKED");
+    private void unblockApimSubscription(int subscriptionId, String tenantDomain) throws APIManagementException {
+        updateApimSubscriptionStatus(subscriptionId, "UNBLOCKED", tenantDomain);
     }
 
-    private void removeApimSubscription(int subscriptionId) throws APIManagementException {
+    private void removeApimSubscription(int subscriptionId, String tenantDomain) throws APIManagementException {
         ApiMgtDAO apiMgtDAO = ApiMgtDAO.getInstance();
         SubscribedAPI subscribedAPI = apiMgtDAO.getSubscriptionById(subscriptionId);
         if (subscribedAPI == null) {
             log.warn("No APIM subscription found with ID: " + subscriptionId + ", skipping removal");
             return;
         }
+        int applicationId = subscribedAPI.getApplication().getId();
         APIIdentifier identifier = subscribedAPI.getAPIIdentifier();
-        if (identifier == null) {
-            log.warn("Subscription " + subscriptionId + " has no APIIdentifier (API Product?), skipping removal");
+        APIProductIdentifier productIdentifier = subscribedAPI.getProductId();
+        if (identifier != null) {
+            apiMgtDAO.removeSubscription(identifier, applicationId);
+        } else if (productIdentifier != null) {
+            apiMgtDAO.removeSubscription(productIdentifier, applicationId);
+        } else {
+            log.warn("Subscription " + subscriptionId + " has neither APIIdentifier nor APIProductIdentifier");
             return;
         }
-        int applicationId = subscribedAPI.getApplication().getId();
-        apiMgtDAO.removeSubscription(identifier, applicationId);
-
-        // Notify the gateway so the subscription cache is invalidated immediately.
-        String tenantDomain = MultitenantUtils.getTenantDomain(identifier.getProviderName());
         int tenantId = APIUtil.getTenantIdFromTenantDomain(tenantDomain);
-        SubscriptionEvent event = new SubscriptionEvent(subscribedAPI.getUUID(), subscribedAPI, tenantId,
-                tenantDomain);
-        APIUtil.sendNotification(event, "SUBSCRIPTIONS");
+        SubscriptionEvent event = new SubscriptionEvent(APIConstants.EventType.SUBSCRIPTIONS_DELETE.name(),
+                subscribedAPI, tenantId, tenantDomain);
+        APIUtil.sendNotification(event, APIConstants.NotifierType.SUBSCRIPTIONS.name());
     }
 
-    private void updateApimSubscriptionStatus(int subscriptionId, String newStatus) throws APIManagementException {
+    private void updateApimSubscriptionStatus(int subscriptionId, String newStatus, String tenantDomain)
+            throws APIManagementException {
         ApiMgtDAO apiMgtDAO = ApiMgtDAO.getInstance();
         apiMgtDAO.updateSubscriptionStatus(subscriptionId, newStatus);
 
-        // Fire a gateway notification so the data-plane cache is updated immediately.
-        // Tenant is derived from the API provider name — the thread-local Carbon context
-        // in the webhook WAR is always carbon.super and must not be used here.
         SubscribedAPI subscribedAPI = apiMgtDAO.getSubscriptionById(subscriptionId);
         if (subscribedAPI != null) {
-            String providerName = subscribedAPI.getAPIIdentifier() != null
-                    ? subscribedAPI.getAPIIdentifier().getProviderName()
-                    : subscribedAPI.getProductId().getProviderName();
-            String tenantDomain = MultitenantUtils.getTenantDomain(providerName);
             int tenantId = APIUtil.getTenantIdFromTenantDomain(tenantDomain);
             subscribedAPI.setSubStatus(newStatus);
-            SubscriptionEvent event = new SubscriptionEvent(subscribedAPI.getUUID(), subscribedAPI, tenantId,
-                    tenantDomain);
-            APIUtil.sendNotification(event, "SUBSCRIPTIONS");
+            SubscriptionEvent event = new SubscriptionEvent(APIConstants.EventType.SUBSCRIPTIONS_UPDATE.name(),
+                    subscribedAPI, tenantId, tenantDomain);
+            APIUtil.sendNotification(event, APIConstants.NotifierType.SUBSCRIPTIONS.name());
+        } else {
+            log.warn("No subscription found after status update for id=" + subscriptionId);
         }
     }
 
@@ -568,11 +600,12 @@ public class WebhookApiServiceImpl {
             SecretKeySpec keySpec = new SecretKeySpec(key.getBytes(StandardCharsets.UTF_8), HMAC_ALGORITHM);
             mac.init(keySpec);
             byte[] hmacBytes = mac.doFinal(data.getBytes(StandardCharsets.UTF_8));
-            Formatter formatter = new Formatter();
-            for (byte b : hmacBytes) {
-                formatter.format("%02x", b);
+            try (Formatter formatter = new Formatter()) {
+                for (byte b : hmacBytes) {
+                    formatter.format("%02x", b);
+                }
+                return formatter.toString();
             }
-            return formatter.toString();
         } catch (NoSuchAlgorithmException | InvalidKeyException e) {
             throw new RuntimeException("HMAC-SHA256 computation failed", e);
         }
@@ -620,15 +653,18 @@ public class WebhookApiServiceImpl {
         workflowDTO.setStatus(WorkflowStatus.APPROVED);
         workflowDTO.setUpdatedTime(System.currentTimeMillis());
 
-        // workflowReference holds the APIM subscription int ID (as set during checkout creation)
         try {
-            int subscriptionId = Integer.parseInt(workflowReference);
+            int subscriptionId = Integer.parseInt(baseDTO.getWorkflowReference());
             SubscribedAPI subscribedAPI = apiMgtDAO.getSubscriptionById(subscriptionId);
             if (subscribedAPI != null) {
                 if (subscribedAPI.getAPIIdentifier() != null) {
                     workflowDTO.setApiName(subscribedAPI.getAPIIdentifier().getApiName());
                     workflowDTO.setApiVersion(subscribedAPI.getAPIIdentifier().getVersion());
                     workflowDTO.setApiProvider(subscribedAPI.getAPIIdentifier().getProviderName());
+                } else if (subscribedAPI.getProductId() != null) {
+                    workflowDTO.setApiName(subscribedAPI.getProductId().getName());
+                    workflowDTO.setApiVersion(subscribedAPI.getProductId().getVersion());
+                    workflowDTO.setApiProvider(subscribedAPI.getProductId().getProviderName());
                 }
                 if (subscribedAPI.getSubscriber() != null) {
                     workflowDTO.setSubscriber(subscribedAPI.getSubscriber().getName());

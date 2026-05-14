@@ -70,6 +70,9 @@ public class StripeMonetizationConstants {
                     " WHERE" +
                     " SUBSCRIBER_ID=? AND TENANT_ID=?";
 
+    public static final String UPDATE_BE_SHARED_CUSTOMER_ID_SQL =
+            "UPDATE AM_MONETIZATION_SHARED_CUSTOMERS SET SHARED_CUSTOMER_ID = ? WHERE ID = ?";
+
     public static final String GET_BE_SHARED_CUSTOMER_SQL =
             " SELECT" +
                     " ID, SHARED_CUSTOMER_ID" +
@@ -203,6 +206,9 @@ public class StripeMonetizationConstants {
             " FROM AM_STRIPE_CHECKOUT_SESSIONS WHERE WORKFLOW_REFERENCE = ?";
     public static final String UPDATE_CHECKOUT_SESSION_STATUS_SQL =
             "UPDATE AM_STRIPE_CHECKOUT_SESSIONS SET STATUS = ?, UPDATED_AT = ? WHERE SESSION_ID = ?";
+    public static final String CLAIM_CHECKOUT_SESSION_SQL =
+            "UPDATE AM_STRIPE_CHECKOUT_SESSIONS SET STATUS = 'COMPLETED', UPDATED_AT = ?" +
+            " WHERE SESSION_ID = ? AND STATUS = 'PENDING'";
 
     // Column name constants for AM_STRIPE_CHECKOUT_SESSIONS
     public static final String CHECKOUT_COL_SESSION_ID = "SESSION_ID";

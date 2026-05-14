@@ -684,6 +684,24 @@ public class StripeMonetizationDAO {
         return id;
     }
 
+    public void updateBESharedCustomerId(int id, String stripeCustomerId) throws StripeMonetizationException {
+        Connection conn = null;
+        PreparedStatement ps = null;
+        try {
+            conn = APIMgtDBUtil.getConnection();
+            ps = conn.prepareStatement(StripeMonetizationConstants.UPDATE_BE_SHARED_CUSTOMER_ID_SQL);
+            ps.setString(1, stripeCustomerId);
+            ps.setInt(2, id);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            String errorMessage = "Failed to update shared customer ID for record: " + id;
+            log.error(errorMessage);
+            throw new StripeMonetizationException(errorMessage, e);
+        } finally {
+            APIMgtDBUtil.closeAllConnections(ps, conn, null);
+        }
+    }
+
     /**
      * Create Billing Engine Subscription Info
      *
@@ -1049,6 +1067,33 @@ public class StripeMonetizationDAO {
     }
 
     /**
+     * Atomically transitions a checkout session from PENDING to COMPLETED.
+     * Returns {@code true} if this call performed the transition, {@code false} if the session
+     * was already completed or does not exist.
+     *
+     * @param sessionId Stripe checkout session ID
+     * @return true if the session was successfully claimed by this call
+     * @throws StripeMonetizationException if the update fails
+     */
+    public boolean claimCheckoutSession(String sessionId) throws StripeMonetizationException {
+        Connection conn = null;
+        PreparedStatement ps = null;
+        try {
+            conn = APIMgtDBUtil.getConnection();
+            ps = conn.prepareStatement(StripeMonetizationConstants.CLAIM_CHECKOUT_SESSION_SQL);
+            ps.setLong(1, System.currentTimeMillis());
+            ps.setString(2, sessionId);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            String errorMessage = "Failed to claim checkout session for sessionId: " + sessionId;
+            log.error(errorMessage, e);
+            throw new StripeMonetizationException(errorMessage, e);
+        } finally {
+            APIMgtDBUtil.closeAllConnections(ps, conn, null);
+        }
+    }
+
+    /**
      * Returns the checkout session record identified by the workflow reference.
      *
      * @param workflowReference external workflow reference
@@ -1089,36 +1134,6 @@ public class StripeMonetizationDAO {
             APIMgtDBUtil.closeAllConnections(ps, conn, rs);
         }
         return row;
-    }
-
-    /**
-     * Returns the subscriber username (USER_ID) who owns the APIM subscription identified by the given UUID.
-     *
-     * @param subscriptionUUID APIM subscription UUID
-     * @return subscriber username, or {@code null} if no matching subscription found
-     * @throws StripeMonetizationException if the DB query fails
-     */
-    public String getSubscriberNameBySubscriptionId(int subscriptionId) throws StripeMonetizationException {
-
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-        try {
-            conn = APIMgtDBUtil.getConnection();
-            ps = conn.prepareStatement(StripeMonetizationConstants.GET_SUBSCRIBER_BY_SUBSCRIPTION_ID_SQL);
-            ps.setInt(1, subscriptionId);
-            rs = ps.executeQuery();
-            if (rs.next()) {
-                return rs.getString("USER_ID");
-            }
-        } catch (SQLException e) {
-            String errorMessage = "Error retrieving subscriber for subscriptionId: " + subscriptionId;
-            log.error(errorMessage, e);
-            throw new StripeMonetizationException(errorMessage, e);
-        } finally {
-            APIMgtDBUtil.closeAllConnections(ps, conn, rs);
-        }
-        return null;
     }
 
     public String getSubscriberNameBySubscriptionUUID(String subscriptionUUID) throws StripeMonetizationException {

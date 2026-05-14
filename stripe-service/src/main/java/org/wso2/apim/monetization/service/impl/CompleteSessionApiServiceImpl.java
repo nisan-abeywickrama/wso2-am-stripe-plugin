@@ -22,7 +22,9 @@ import org.apache.commons.logging.LogFactory;
 import org.wso2.apim.monetization.impl.StripeMonetizationConstants;
 import org.wso2.apim.monetization.impl.StripeMonetizationDAO;
 import org.wso2.apim.monetization.impl.StripeMonetizationException;
+import org.wso2.apim.monetization.impl.util.MonetizationUtil;
 import org.wso2.carbon.apimgt.api.APIManagementException;
+import org.wso2.carbon.apimgt.impl.utils.APIUtil;
 
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
@@ -77,6 +79,41 @@ public class CompleteSessionApiServiceImpl {
             log.error("Checkout session row missing workflowReference for sessionId: " + sessionId);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity("{\"error\":\"Missing workflow reference in checkout session\"}")
+                    .build();
+        }
+
+        // Guard: confirm payment status directly with Stripe before activating the subscription
+        String tenantIdStr = sessionRow.get(StripeMonetizationConstants.CHECKOUT_COL_TENANT_ID);
+        String apiUuid = sessionRow.get(StripeMonetizationConstants.CHECKOUT_COL_API_UUID);
+        int tenantId;
+        try {
+            tenantId = Integer.parseInt(tenantIdStr);
+        } catch (NumberFormatException e) {
+            log.error("Invalid tenantId in checkout session row for sessionId: " + sessionId, e);
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("{\"error\":\"Invalid session data\"}")
+                    .build();
+        }
+        String tenantDomain = APIUtil.getTenantDomainFromTenantId(tenantId);
+        try {
+            MonetizationUtil.requireCheckoutSessionPaid(sessionId, tenantId, apiUuid, tenantDomain);
+        } catch (StripeMonetizationException e) {
+            log.warn("Stripe session not paid — subscription activation blocked: sessionId="
+                    + sessionId + " — " + e.getMessage());
+            return Response.status(Response.Status.PAYMENT_REQUIRED)
+                    .entity("{\"error\":\"Payment not yet complete. Please complete checkout before proceeding.\"}")
+                    .build();
+        }
+
+        try {
+            boolean claimed = StripeMonetizationDAO.getInstance().claimCheckoutSession(sessionId);
+            if (!claimed) {
+                return Response.ok("{\"status\":\"already_completed\"}").build();
+            }
+        } catch (StripeMonetizationException e) {
+            log.error("Failed to claim checkout session for sessionId: " + sessionId, e);
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity("{\"error\":\"Database error\"}")
                     .build();
         }
 

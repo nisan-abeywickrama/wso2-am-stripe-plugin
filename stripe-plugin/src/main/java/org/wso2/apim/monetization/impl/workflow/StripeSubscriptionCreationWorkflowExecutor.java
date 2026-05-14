@@ -32,12 +32,14 @@ import org.wso2.apim.monetization.impl.StripeMonetizationConstants;
 import org.wso2.apim.monetization.impl.StripeMonetizationDAO;
 import org.wso2.apim.monetization.impl.StripeMonetizationException;
 import org.wso2.apim.monetization.impl.model.MonetizationSharedCustomer;
+import org.wso2.apim.monetization.impl.model.MonetizedSubscription;
 import org.wso2.apim.monetization.impl.util.MonetizationUtil;
 import org.wso2.carbon.apimgt.api.APIManagementException;
 import org.wso2.carbon.apimgt.api.WorkflowResponse;
 import org.wso2.carbon.apimgt.api.model.API;
 import org.wso2.carbon.apimgt.api.model.APIIdentifier;
 import org.wso2.carbon.apimgt.api.model.APIProduct;
+import org.wso2.carbon.apimgt.api.model.APIProductIdentifier;
 import org.wso2.carbon.apimgt.api.model.SubscribedAPI;
 import org.wso2.carbon.apimgt.api.model.Subscriber;
 import org.wso2.carbon.apimgt.impl.APIConstants;
@@ -57,6 +59,7 @@ import org.wso2.carbon.apimgt.persistence.APIPersistence;
 import org.wso2.carbon.apimgt.persistence.PersistenceManager;
 import org.wso2.carbon.apimgt.persistence.dto.Organization;
 import org.wso2.carbon.apimgt.persistence.dto.PublisherAPI;
+import org.wso2.carbon.apimgt.persistence.dto.PublisherAPIProduct;
 import org.wso2.carbon.apimgt.persistence.exceptions.APIPersistenceException;
 
 import java.sql.Connection;
@@ -146,7 +149,7 @@ public class StripeSubscriptionCreationWorkflowExecutor extends WorkflowExecutor
             log.error(errorMessage, e);
             throw new WorkflowException(errorMessage, e);
         }
-        return initiateCheckoutSession(subWorkFlowDTO, subscriber, apiProduct.getUuid());
+        return initiateCheckoutSessionForProduct(subWorkFlowDTO, subscriber, apiProduct);
     }
 
     @Override
@@ -244,6 +247,154 @@ public class StripeSubscriptionCreationWorkflowExecutor extends WorkflowExecutor
         }
         throw new WorkflowException(
                 "Connected account key not found for API: " + publisherAPI.getApiName());
+    }
+
+    private PublisherAPIProduct loadPublisherAPIProduct(String productUuid, String tenantDomain)
+            throws WorkflowException {
+        Organization org = new Organization(tenantDomain);
+        try {
+            return getApiPersistenceInstance().getPublisherAPIProduct(org, productUuid);
+        } catch (APIPersistenceException e) {
+            String errorMessage = "Failed to retrieve API Product of UUID: " + productUuid;
+            log.error(errorMessage, e);
+            throw new WorkflowException(errorMessage, e);
+        }
+    }
+
+    private String getConnectedAccountKeyFromProduct(PublisherAPIProduct publisherAPIProduct)
+            throws WorkflowException {
+        Map<String, String> monetizationProperties = publisherAPIProduct.getMonetizationProperties();
+        if (MapUtils.isNotEmpty(monetizationProperties) &&
+                monetizationProperties.containsKey(
+                        StripeMonetizationConstants.BILLING_ENGINE_CONNECTED_ACCOUNT_KEY)) {
+            String key = monetizationProperties.get(
+                    StripeMonetizationConstants.BILLING_ENGINE_CONNECTED_ACCOUNT_KEY);
+            if (StringUtils.isBlank(key)) {
+                throw new WorkflowException(
+                        "Connected account key is blank for API Product: "
+                                + publisherAPIProduct.getApiProductName());
+            }
+            return key;
+        }
+        throw new WorkflowException(
+                "Connected account key not found for API Product: "
+                        + publisherAPIProduct.getApiProductName());
+    }
+
+    /**
+     * Creates a Stripe Checkout session in SUBSCRIPTION mode for an API Product subscription.
+     * Works like {@link #initiateCheckoutSession} but loads monetization properties from the
+     * {@link PublisherAPIProduct} and resolves the billing plan via the API Product's integer ID.
+     */
+    private WorkflowResponse initiateCheckoutSessionForProduct(SubscriptionWorkflowDTO subWorkFlowDTO,
+            Subscriber subscriber, APIProduct apiProduct) throws WorkflowException {
+
+        MonetizationUtil.setProxy();
+        if (StringUtils.isBlank(checkoutSuccessUrl)) {
+            throw new WorkflowException(
+                    "checkoutSuccessUrl is not configured in the workflow executor configuration.");
+        }
+        if (StringUtils.isBlank(checkoutCancelUrl)) {
+            throw new WorkflowException(
+                    "checkoutCancelUrl is not configured in the workflow executor configuration.");
+        }
+
+        String apiProductUuid = apiProduct.getUuid();
+        PublisherAPIProduct publisherAPIProduct = loadPublisherAPIProduct(apiProductUuid,
+                subWorkFlowDTO.getTenantDomain());
+        String connectedAccountKey = getConnectedAccountKeyFromProduct(publisherAPIProduct);
+
+        SubscribedAPI subscribedAPI;
+        try {
+            subscribedAPI = ApiMgtDAO.getInstance()
+                    .getSubscriptionById(Integer.parseInt(subWorkFlowDTO.getWorkflowReference()));
+        } catch (APIManagementException e) {
+            String errorMessage = "Failed to load subscription from DB for workflowReference: "
+                    + subWorkFlowDTO.getWorkflowReference();
+            log.error(errorMessage, e);
+            throw new WorkflowException(errorMessage, e);
+        }
+        String tierName = subscribedAPI.getTier().getName();
+
+        String priceId;
+        try {
+            int productId = ApiMgtDAO.getInstance().getAPIProductId(apiProduct.getId());
+            priceId = stripeMonetizationDAO.getBillingEnginePlanIdForTier(productId, tierName);
+        } catch (APIManagementException e) {
+            String errorMessage = "Failed to retrieve API Product ID for UUID: " + apiProductUuid;
+            log.error(errorMessage, e);
+            throw new WorkflowException(errorMessage, e);
+        } catch (StripeMonetizationException e) {
+            String errorMessage = "Failed to retrieve billing plan for tier: " + tierName;
+            log.error(errorMessage, e);
+            throw new WorkflowException(errorMessage, e);
+        }
+
+        String platformKey = getPlatformAccountKey(subWorkFlowDTO.getTenantId());
+        RequestOptions requestOptions = RequestOptions.builder()
+                .setApiKey(platformKey)
+                .setStripeAccount(connectedAccountKey)
+                .build();
+
+        boolean isMetered = false;
+        try {
+            Price price = Price.retrieve(priceId, requestOptions);
+            if (price.getRecurring() != null
+                    && StripeMonetizationConstants.METERED_PLAN.equals(price.getRecurring().getUsageType())) {
+                isMetered = true;
+            }
+        } catch (StripeException e) {
+            String errorMessage = "Failed to retrieve Stripe price for plan: " + priceId;
+            log.error(errorMessage, e);
+            throw new WorkflowException(errorMessage, e);
+        }
+
+        SessionCreateParams.LineItem.Builder lineItemBuilder = SessionCreateParams.LineItem.builder()
+                .setPrice(priceId);
+        if (!isMetered) {
+            lineItemBuilder.setQuantity(1L);
+        }
+
+        SessionCreateParams params = SessionCreateParams.builder()
+                .setMode(SessionCreateParams.Mode.SUBSCRIPTION)
+                .setSuccessUrl(checkoutSuccessUrl)
+                .setCancelUrl(checkoutCancelUrl)
+                .addLineItem(lineItemBuilder.build())
+                .setAllowPromotionCodes(true)
+                .setClientReferenceId(subWorkFlowDTO.getExternalWorkflowReference())
+                .putMetadata("workflowReference", subWorkFlowDTO.getExternalWorkflowReference())
+                .putMetadata("tenantDomain", subWorkFlowDTO.getTenantDomain())
+                .build();
+
+        try {
+            Session session = Session.create(params, requestOptions);
+            try {
+                stripeMonetizationDAO.saveCheckoutSession(
+                        session.getId(),
+                        subWorkFlowDTO.getExternalWorkflowReference(),
+                        subscriber.getId(),
+                        subWorkFlowDTO.getTenantId(),
+                        apiProductUuid,
+                        session.getUrl());
+            } catch (StripeMonetizationException e) {
+                String errorMessage = "Failed to save Stripe Checkout session for workflowReference: "
+                        + subWorkFlowDTO.getExternalWorkflowReference();
+                log.error(errorMessage, e);
+                throw new WorkflowException(errorMessage, e);
+            }
+            subWorkFlowDTO.setStatus(WorkflowStatus.CREATED);
+            super.execute(subWorkFlowDTO);
+            HttpWorkflowResponse response = new HttpWorkflowResponse();
+            response.setRedirectUrl(session.getUrl());
+            response.setRedirectConfirmationMsg(
+                    "Please complete the checkout to activate your subscription.");
+            return response;
+        } catch (StripeException e) {
+            String errorMessage = "Failed to create Stripe Checkout session for subscriber: "
+                    + subscriber.getName();
+            log.error(errorMessage, e);
+            throw new WorkflowException(errorMessage, e);
+        }
     }
 
     /**
@@ -374,11 +525,18 @@ public class StripeSubscriptionCreationWorkflowExecutor extends WorkflowExecutor
 
         String sessionId = sessionRow.get(StripeMonetizationConstants.CHECKOUT_COL_SESSION_ID);
 
-        if (StripeMonetizationConstants.CHECKOUT_SESSION_STATUS_COMPLETED.equals(
-                sessionRow.get(StripeMonetizationConstants.CHECKOUT_COL_STATUS))) {
-            workflowDTO.setStatus(WorkflowStatus.APPROVED);
+        if (WorkflowStatus.REJECTED.equals(workflowDTO.getStatus())) {
+            int subscriptionId = Integer.parseInt(workflowDTO.getWorkflowReference());
             workflowDTO.setUpdatedTime(System.currentTimeMillis());
             super.complete(workflowDTO);
+            try {
+                ApiMgtDAO.getInstance().updateSubscriptionStatus(subscriptionId,
+                        APIConstants.SubscriptionStatus.REJECTED);
+            } catch (APIManagementException e) {
+                String errorMessage = "Failed to reject subscription for subscriptionId: " + subscriptionId;
+                log.error(errorMessage, e);
+                throw new WorkflowException(errorMessage, e);
+            }
             return new GeneralWorkflowResponse();
         }
 
@@ -390,8 +548,39 @@ public class StripeSubscriptionCreationWorkflowExecutor extends WorkflowExecutor
         MonetizationUtil.setProxy();
         String platformKey = getPlatformAccountKey(tenantId);
 
-        PublisherAPI publisherAPI = loadPublisherAPI(apiUuid, workflowDTO.getTenantDomain());
-        String connectedAccountKey = getConnectedAccountKey(publisherAPI);
+        // Load subscription early to determine whether this is an API or API Product subscription
+        ApiMgtDAO apiMgtDAO = ApiMgtDAO.getInstance();
+        Subscriber subscriber;
+        SubscribedAPI subscribedAPI;
+        try {
+            subscriber = apiMgtDAO.getSubscriber(subscriberId);
+            subscribedAPI = apiMgtDAO.getSubscriptionById(subscriptionId);
+        } catch (APIManagementException e) {
+            String errorMessage = "Failed to load subscriber or subscription from DB for subscriptionId: "
+                    + subscriptionId;
+            log.error(errorMessage, e);
+            throw new WorkflowException(errorMessage, e);
+        }
+
+        boolean isApiProduct = subscribedAPI.getProductId() != null;
+        String connectedAccountKey;
+        String apiProvider;
+        String apiName;
+        String apiVersion;
+        if (isApiProduct) {
+            PublisherAPIProduct publisherAPIProduct = loadPublisherAPIProduct(apiUuid,
+                    workflowDTO.getTenantDomain());
+            connectedAccountKey = getConnectedAccountKeyFromProduct(publisherAPIProduct);
+            apiProvider = publisherAPIProduct.getProviderName();
+            apiName = publisherAPIProduct.getApiProductName();
+            apiVersion = publisherAPIProduct.getVersion();
+        } else {
+            PublisherAPI publisherAPI = loadPublisherAPI(apiUuid, workflowDTO.getTenantDomain());
+            connectedAccountKey = getConnectedAccountKey(publisherAPI);
+            apiProvider = publisherAPI.getProviderName();
+            apiName = publisherAPI.getApiName();
+            apiVersion = publisherAPI.getVersion();
+        }
 
         RequestOptions requestOptions = RequestOptions.builder()
                 .setApiKey(platformKey)
@@ -414,22 +603,7 @@ public class StripeSubscriptionCreationWorkflowExecutor extends WorkflowExecutor
                     "Stripe Checkout session has no subscription ID — session may not be completed: " + sessionId);
         }
 
-        ApiMgtDAO apiMgtDAO = ApiMgtDAO.getInstance();
-        Subscriber subscriber;
-        SubscribedAPI subscribedAPI;
-        try {
-            subscriber = apiMgtDAO.getSubscriber(subscriberId);
-            subscribedAPI = apiMgtDAO.getSubscriptionById(subscriptionId);
-        } catch (APIManagementException e) {
-            String errorMessage = "Failed to load subscriber or subscription from DB for subscriptionId: "
-                    + subscriptionId;
-            log.error(errorMessage, e);
-            throw new WorkflowException(errorMessage, e);
-        }
         int applicationId = subscribedAPI.getApplication().getId();
-        String apiProvider = publisherAPI.getProviderName();
-        String apiName = publisherAPI.getApiName();
-        String apiVersion = publisherAPI.getVersion();
 
         // Ensure a shared customer record exists for this application+provider combination.
         // In SUBSCRIPTION mode, Stripe creates and owns the customer on the connected account.
@@ -449,7 +623,6 @@ public class StripeSubscriptionCreationWorkflowExecutor extends WorkflowExecutor
                 sharedCustomer.setApiProvider(apiProvider);
                 sharedCustomer.setTenantId(subscriber.getTenantId());
                 sharedCustomer.setSharedCustomerId(stripeCustomerId);
-                sharedCustomer.setParentCustomerId(0);
                 int id = stripeMonetizationDAO.addBESharedCustomer(sharedCustomer);
                 sharedCustomer.setId(id);
             } catch (StripeMonetizationException e) {
@@ -457,12 +630,25 @@ public class StripeSubscriptionCreationWorkflowExecutor extends WorkflowExecutor
                 log.error(errorMessage, e);
                 throw new WorkflowException(errorMessage, e);
             }
+        } else if (!stripeCustomerId.equals(sharedCustomer.getSharedCustomerId())) {
+            try {
+                stripeMonetizationDAO.updateBESharedCustomerId(sharedCustomer.getId(), stripeCustomerId);
+                sharedCustomer.setSharedCustomerId(stripeCustomerId);
+            } catch (StripeMonetizationException e) {
+                String errorMessage = "Failed to update shared customer ID for applicationId: " + applicationId;
+                log.error(errorMessage, e);
+                throw new WorkflowException(errorMessage, e);
+            }
         }
 
         APIIdentifier identifier = new APIIdentifier(apiProvider, apiName, apiVersion);
         try {
-            stripeMonetizationDAO.addBESubscription(identifier, applicationId, tenantId,
-                    sharedCustomer.getId(), stripeSubscriptionId, apiUuid);
+            MonetizedSubscription existing = stripeMonetizationDAO.getMonetizedSubscription(
+                    apiUuid, apiName, applicationId, workflowDTO.getTenantDomain());
+            if (existing.getSubscriptionId() == null) {
+                stripeMonetizationDAO.addBESubscription(identifier, applicationId, tenantId,
+                        sharedCustomer.getId(), stripeSubscriptionId, apiUuid);
+            }
         } catch (StripeMonetizationException e) {
             String errorMessage = "Failed to persist Stripe subscription for applicationId: " + applicationId;
             log.error(errorMessage, e);
