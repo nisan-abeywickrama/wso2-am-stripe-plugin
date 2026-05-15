@@ -262,7 +262,8 @@ public class WebhookApiServiceImpl {
                 workflowDTO.setStatus(WorkflowStatus.REJECTED);
                 workflowDTO.setUpdatedTime(System.currentTimeMillis());
                 WorkflowExecutorFactory.getInstance()
-                        .getWorkflowExecutor(WorkflowConstants.WF_TYPE_AM_SUBSCRIPTION_CREATION)
+                        .getWorkflowExecutor(WorkflowConstants.WF_TYPE_AM_SUBSCRIPTION_CREATION,
+                                workflowDTO.getTenantDomain())
                         .complete(workflowDTO);
             }
         } catch (APIManagementException | WorkflowException e) {
@@ -678,14 +679,14 @@ public class WebhookApiServiceImpl {
                 }
             }
         } catch (NumberFormatException e) {
-            log.warn("workflowReference is not an integer subscription ID, subscription fields will be empty: "
-                    + workflowReference);
+            log.warn("workflowReference is not an integer, subscription fields will be empty: " + workflowReference);
         }
 
         WorkflowExecutor executor;
         try {
             executor = WorkflowExecutorFactory.getInstance()
-                    .getWorkflowExecutor(WorkflowConstants.WF_TYPE_AM_SUBSCRIPTION_CREATION);
+                    .getWorkflowExecutor(WorkflowConstants.WF_TYPE_AM_SUBSCRIPTION_CREATION,
+                            workflowDTO.getTenantDomain());
             executor.complete(workflowDTO);
         } catch (WorkflowException e) {
             throw new APIManagementException("Workflow execution failed for reference: " + workflowReference, e);

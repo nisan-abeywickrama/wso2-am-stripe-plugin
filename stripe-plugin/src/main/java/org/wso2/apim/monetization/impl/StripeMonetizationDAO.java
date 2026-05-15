@@ -942,7 +942,7 @@ public class StripeMonetizationDAO {
             ps.setString(5, apiUuid);
             ps.setString(6, checkoutUrl);
             ps.setString(7, StripeMonetizationConstants.CHECKOUT_SESSION_STATUS_PENDING);
-            ps.setLong(8, System.currentTimeMillis());
+            ps.setTimestamp(8, new java.sql.Timestamp(System.currentTimeMillis()));
             ps.executeUpdate();
             conn.commit();
         } catch (SQLException e) {
@@ -1081,7 +1081,7 @@ public class StripeMonetizationDAO {
         try {
             conn = APIMgtDBUtil.getConnection();
             ps = conn.prepareStatement(StripeMonetizationConstants.CLAIM_CHECKOUT_SESSION_SQL);
-            ps.setLong(1, System.currentTimeMillis());
+            ps.setTimestamp(1, new java.sql.Timestamp(System.currentTimeMillis()));
             ps.setString(2, sessionId);
             return ps.executeUpdate() > 0;
         } catch (SQLException e) {
@@ -1175,7 +1175,7 @@ public class StripeMonetizationDAO {
             conn.setAutoCommit(false);
             ps = conn.prepareStatement(StripeMonetizationConstants.UPDATE_CHECKOUT_SESSION_STATUS_SQL);
             ps.setString(1, status);
-            ps.setLong(2, System.currentTimeMillis());
+            ps.setTimestamp(2, new java.sql.Timestamp(System.currentTimeMillis()));
             ps.setString(3, sessionId);
             ps.executeUpdate();
             conn.commit();
