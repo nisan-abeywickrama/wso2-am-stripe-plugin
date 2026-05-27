@@ -7,11 +7,11 @@
     <parent>
         <groupId>org.wso2.apim.monetization</groupId>
         <artifactId>wso2-apim-stripe-monetization</artifactId>
-        <version>1.6.0</version>
+        <version>1.7.0</version>
     </parent>
 
     <artifactId>org.wso2.apim.monetization.service</artifactId>
-    <version>1.6.0</version>
+    <version>1.7.0</version>
     <packaging>war</packaging>
     <name>WSO2 APIM Stripe Service REST API</name>
     <description>
@@ -21,8 +21,8 @@
     </description>
 
     <properties>
-        <carbon.apimgt.version>9.32.130</carbon.apimgt.version>
-        <stripe.plugin.version>1.6.0</stripe.plugin.version>
+        <carbon.apimgt.version>9.33.122</carbon.apimgt.version>
+        <stripe.plugin.version>1.7.0</stripe.plugin.version>
         <cxf.version>3.3.6</cxf.version>
         <jackson.version>2.13.3</jackson.version>
         <maven.compiler.version>3.8.1</maven.compiler.version>

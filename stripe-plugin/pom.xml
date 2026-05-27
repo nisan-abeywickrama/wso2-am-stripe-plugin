@@ -7,12 +7,12 @@
     <parent>
         <groupId>org.wso2.apim.monetization</groupId>
         <artifactId>wso2-apim-stripe-monetization</artifactId>
-        <version>1.6.0</version>
+        <version>1.7.0</version>
     </parent>
 
     <groupId>org.wso2.apim.monetization</groupId>
     <artifactId>org.wso2.apim.monetization.impl</artifactId>
-    <version>1.6.0</version>
+    <version>1.7.0</version>
     <packaging>bundle</packaging>
 
     <dependencies>
@@ -83,7 +83,7 @@
     </dependencies>
 
     <properties>
-        <carbon.apimgt.version>9.32.130</carbon.apimgt.version>
+        <carbon.apimgt.version>9.33.122</carbon.apimgt.version>
         <commons.lang.version>2.6</commons.lang.version>
         <stripe.version>24.3.0</stripe.version>
         <elastic.client.version>8.13.1</elastic.client.version>
